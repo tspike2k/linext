@@ -1,6 +1,6 @@
 #!/bin/bash
 mkdir -p ./bin/rootfs/dev
-gcc -static -o ./bin/rootfs/init src/init.c -I/usr/include/drm
+gcc -static -o ./bin/rootfs/init src/init.c -I/usr/include/drm -lm
 
 # Gather all the files and directories listed in ./bin/rootfs and then convert them into a
 # cpio archive, which we compress using gzip.

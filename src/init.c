@@ -30,6 +30,14 @@ freely, subject to the following restrictions:
 #include <errno.h>
 #include <sys/mount.h>
 #include <linux/fb.h>
+#include <math.h>
+#include <time.h>
+
+typedef int8_t   s8;
+typedef uint8_t  u8;
+typedef uint32_t u32;
+typedef uint64_t u64;
+typedef float    f32;
 
 static void print_dir(const char *dir_path){
     DIR *dir = opendir(dir_path);
@@ -45,6 +53,46 @@ static void print_dir(const char *dir_path){
     }
 }
 
+#define for_count(T, i, max) for(T i = 0; i < max; i++)
+
+static f32 lerp(f32 a, f32 b, f32 t){
+    f32 result = a + (b - a)*t;
+    return result;
+}
+
+static f32 dist(f32 x, f32 y){
+    f32 result = sqrt(x*x + y*y);
+    return result;
+}
+
+static void sleep_ns(u64 nanoseconds){
+    if(nanoseconds > 0){
+        struct timespec ts;
+        ts.tv_sec  = nanoseconds / 1000000000;
+        ts.tv_nsec = nanoseconds % 1000000000;
+        // NOTE: nanosleep can fail when a signal is raised. If this happens it returns -1.
+        // In that case we try the function again.
+        while(nanosleep(&ts, NULL) == -1){
+
+        }
+    }
+}
+
+static void draw_gradiant(u32 *pixels, u32 pixels_w, u32 pixels_h, f32 target_x, f32 target_y){
+    for_count(u32, y, pixels_h){
+        for_count(u32, x, pixels_w){
+            f32 dx = ((f32)x) / (f32)pixels_w;
+            f32 dy = ((f32)y) / (f32)pixels_h;
+
+            f32 value = 1.0f-dist(dx - target_x, dy - target_y);
+            u32 b = (u8)(value * 255.0f);
+
+            u32 color = 0xff000000 | (b << 0);
+            pixels[x + y * pixels_w] = color;
+        }
+    }
+}
+
 int main(){
     // In order for the kernel to populate /dev with device files, we need to mount /dev as
     // a devtmpfs file system.
@@ -53,7 +101,7 @@ int main(){
         return 1;
     }
 
-    /*print_dir("/dev");*/
+    print_dir("/dev/input");
 
 #if 0
     int dri_fd = open("/dev/dri/card0", O_RDWR);
@@ -65,6 +113,11 @@ int main(){
     int fb_fd = open("/dev/fb0", O_RDWR);
     if(fb_fd == -1){
         printf("Failed to open fb0: %s\n", strerror(errno));
+    }
+
+    int mouse_fd = open("/dev/input/mice", O_RDONLY|O_NONBLOCK);
+    if(mouse_fd == -1){
+        printf("Warning! Unable to open /dev/input/mice: %s\n", strerror(errno));
     }
 
     struct fb_fix_screeninfo finfo;
@@ -89,7 +142,9 @@ int main(){
         return 1;
     }
 
-    size_t pixels_count = vinfo.xres * vinfo.yres;
+    u32 pixels_w = vinfo.xres;
+    u32 pixels_h = vinfo.yres;
+    size_t pixels_count =  pixels_w * pixels_h;
     size_t pixels_bytes = pixels_count * vinfo.bits_per_pixel;
 
     // Map the device to memory
@@ -99,11 +154,28 @@ int main(){
         return 1;
     }
 
+    int mouse_x = 0;
+    int mouse_y = 0;
+
+    s8 mouse_event[3];
+
     while(true) {
-        for(uint32_t i = 0; i < pixels_count; i++) {
-            fb_pixels[i] = 0xff0000ff;
+        if(mouse_fd){
+            // TODO: Handle interrupts
+            ssize_t bytes_read = read(mouse_fd, mouse_event, sizeof(mouse_event));
+            if(bytes_read == sizeof(mouse_event)){
+                mouse_x += mouse_event[1];
+                mouse_y += mouse_event[2];
+            }
         }
-        sleep(1);
+
+        f32 target_x = 0.5f + ((f32)mouse_x) / (f32)pixels_w;
+        f32 target_y = 0.5f - ((f32)mouse_y) / (f32)pixels_h;
+
+        draw_gradiant(fb_pixels, pixels_w, pixels_h, target_x, target_y);
+        target_x += 0.01f;
+        if(target_x > 1) target_x = 0;
+        sleep_ns(16000000);
     }
 
     // TODO: What is the correct thing to do to shut down the Linux kernel?

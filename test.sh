@@ -12,4 +12,13 @@
 #qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -m 512M -vga virtio
 #qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -append "console=ttyS0 quiet" -vga std
 
-qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -device bochs-display -append "console=ttyS0"
+
+# NOTE: To disable blinking terminal cursor when using fbdev, you need to provide the kernel with
+# the following boot parameters to the kernel:
+# "consoleblank=0 vt.global_cursor_default=0"
+# Sources:
+# https://developer.toradex.com/linux-bsp/application-development/multimedia/framebuffer-linux/
+#
+# NOTE: The "console=ttyS0" parameter routes terminal output to the serial0 device, which
+# can be viewed in Qemu-gtk under the View menu or by pressing Ctrl+Alt+4
+qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -device bochs-display -append "console=ttyS0 consoleblank=0 vt.global_cursor_default=0"
