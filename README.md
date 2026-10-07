@@ -22,6 +22,10 @@ For testing via a virtual machine, you will need qemu installed:
 
 `sudo pacman -S qemu-system-x86 qemu-ui-gtk`
 
+## Building
+
+To build the project, navigate to the root directory of the project. From there, run the `build_kernel.sh` script followed by the `build.sh` script. This should both build both the Linux kernel and this project's userland. To test the project in a virtual machine, run the `test.sh` script.
+
 ## License
 
 This project's source code is shared under the zlib license. See accompanying [license file](https://github.com/tspike2k/linext/blob/main/LICENSE.txt). All dependencies are under their own specific licenses.

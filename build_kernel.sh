@@ -20,5 +20,7 @@ cd $KERNEL_NAME
 cp ../../data/kernel_config .config
 
 echo Building...
-make -j 10
+# Configuring make to use all but two cores, adapted from here:
+# https://unix.stackexchange.com/a/483306
+make -j$(( $(nproc)-2 ))
 cp ./arch/x86/boot/bzImage ../
