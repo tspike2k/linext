@@ -32,6 +32,7 @@ freely, subject to the following restrictions:
 #include <linux/fb.h>
 #include <math.h>
 #include <time.h>
+#include <stdbool.h>
 
 typedef int8_t   s8;
 typedef uint8_t  u8;
@@ -93,6 +94,63 @@ static void draw_gradiant(u32 *pixels, u32 pixels_w, u32 pixels_h, f32 target_x,
     }
 }
 
+typedef struct{
+    int fd;
+    u32 *pixels;
+    u32  width;
+    u32  height;
+} Fbdev;
+
+static bool init_fbdev(Fbdev *fbdev){
+    fbdev->fd = open("/dev/fb0", O_RDWR);
+    if(fbdev->fd == -1){
+        printf("Failed to open fb0: %s\n", strerror(errno));
+        return false;
+    }
+
+    struct fb_fix_screeninfo finfo;
+	struct fb_var_screeninfo vinfo;
+
+	ioctl(fbdev->fd, FBIOGET_FSCREENINFO, &finfo); //Get fixed screen information
+
+    // First, we get the variable screen info from fbdev. Then we configure what we want,
+    // and then submit it. We get the info again to make sure we got back what we requested.
+	ioctl(fbdev->fd, FBIOGET_VSCREENINFO, &vinfo);
+    vinfo.grayscale = 0;
+    vinfo.bits_per_pixel = 32;
+    ioctl(fbdev->fd, FBIOPUT_VSCREENINFO, &vinfo);
+    ioctl(fbdev->fd, FBIOGET_VSCREENINFO, &vinfo);
+    if(vinfo.grayscale != 0){
+        printf("Unable to request color display from fbdev.\n");
+        return false;
+    }
+
+    if(vinfo.bits_per_pixel != 32){
+        printf("Unable to request 32-bits per pixel from fbdev.\n");
+        return false;
+    }
+
+    fbdev->width  = vinfo.xres;
+    fbdev->height = vinfo.yres;
+
+    printf("fbdev resolution: %u, %u\n", fbdev->width, fbdev->height);
+
+    size_t pixels_count = fbdev->width * fbdev->height;
+    size_t pixels_bytes = pixels_count * (vinfo.bits_per_pixel / 8);
+    if(pixels_bytes != finfo.smem_len){
+        printf("Warning! fbdev buffer is %u bytes instead of %u\n", finfo.smem_len, pixels_bytes);
+    }
+
+    // Map the device to memory
+    fbdev->pixels = (uint32_t *)mmap(0, pixels_bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fbdev->fd, 0);
+    if(((intptr_t)fbdev->pixels) == -1){
+        printf("Failed to mmap pixels!\n");
+        return false;
+    }
+
+    return true;
+}
+
 int main(){
     // In order for the kernel to populate /dev with device files, we need to mount /dev as
     // a devtmpfs file system.
@@ -101,7 +159,7 @@ int main(){
         return 1;
     }
 
-    print_dir("/dev/input");
+    /*print_dir("/dev");*/
 
 #if 0
     int dri_fd = open("/dev/dri/card0", O_RDWR);
@@ -110,74 +168,46 @@ int main(){
     }
 #endif
 
-    int fb_fd = open("/dev/fb0", O_RDWR);
-    if(fb_fd == -1){
-        printf("Failed to open fb0: %s\n", strerror(errno));
-    }
-
     int mouse_fd = open("/dev/input/mice", O_RDONLY|O_NONBLOCK);
     if(mouse_fd == -1){
         printf("Warning! Unable to open /dev/input/mice: %s\n", strerror(errno));
     }
 
-    struct fb_fix_screeninfo finfo;
-	struct fb_var_screeninfo vinfo;
+    Fbdev fbdev = {0};
+    if(init_fbdev(&fbdev)){
+        int mouse_x = 0;
+        int mouse_y = 0;
 
-	ioctl(fb_fd, FBIOGET_FSCREENINFO, &finfo); //Get fixed screen information
+        s8 mouse_event[3];
 
-    // First, we get the variable screen info from fbdev. Then we configure what we want,
-    // and then submit it. We get the info again to make sure we got back what we requested.
-	ioctl(fb_fd, FBIOGET_VSCREENINFO, &vinfo);
-    vinfo.grayscale = 0;
-    vinfo.bits_per_pixel = 32;
-    ioctl(fb_fd, FBIOPUT_VSCREENINFO, &vinfo);
-    ioctl(fb_fd, FBIOGET_VSCREENINFO, &vinfo);
-    if(vinfo.grayscale != 0){
-        printf("Unable to request color display from fbdev.\n");
-        return 1;
-    }
-
-    if(vinfo.bits_per_pixel != 32){
-        printf("Unable to request 32-bits per pixel from fbdev.\n");
-        return 1;
-    }
-
-    u32 pixels_w = vinfo.xres;
-    u32 pixels_h = vinfo.yres;
-    size_t pixels_count =  pixels_w * pixels_h;
-    size_t pixels_bytes = pixels_count * vinfo.bits_per_pixel;
-
-    // Map the device to memory
-    uint32_t *fb_pixels = (uint32_t *)mmap(0, pixels_bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fb_fd, 0);
-    if((intptr_t)fb_pixels == -1){
-        printf("Failed to mmap!\n");
-        return 1;
-    }
-
-    int mouse_x = 0;
-    int mouse_y = 0;
-
-    s8 mouse_event[3];
-
-    while(true) {
-        if(mouse_fd){
-            // TODO: Handle interrupts
-            ssize_t bytes_read = read(mouse_fd, mouse_event, sizeof(mouse_event));
-            if(bytes_read == sizeof(mouse_event)){
-                mouse_x += mouse_event[1];
-                mouse_y += mouse_event[2];
+        while(true){
+            if(mouse_fd){
+                // TODO: Handle interrupts
+                ssize_t bytes_read = read(mouse_fd, mouse_event, sizeof(mouse_event));
+                if(bytes_read == sizeof(mouse_event)){
+                    mouse_x += mouse_event[1];
+                    mouse_y += mouse_event[2];
+                }
             }
+
+            f32 target_x = 0.5f + ((f32)mouse_x) / (f32)fbdev.width;
+            f32 target_y = 0.5f - ((f32)mouse_y) / (f32)fbdev.height;
+
+            draw_gradiant(fbdev.pixels, fbdev.width, fbdev.height, target_x, target_y);
+            target_x += 0.01f;
+            if(target_x > 1) target_x = 0;
+            sleep_ns(16000000);
         }
+    }
 
-        f32 target_x = 0.5f + ((f32)mouse_x) / (f32)pixels_w;
-        f32 target_y = 0.5f - ((f32)mouse_y) / (f32)pixels_h;
-
-        draw_gradiant(fb_pixels, pixels_w, pixels_h, target_x, target_y);
-        target_x += 0.01f;
-        if(target_x > 1) target_x = 0;
-        sleep_ns(16000000);
+    if(fbdev.fd != -1){
+        close(fbdev.fd);
     }
 
     // TODO: What is the correct thing to do to shut down the Linux kernel?
+    while(true){
+        sleep_ns(16000000);
+    }
+
     return 0;
 }

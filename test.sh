@@ -22,3 +22,5 @@
 # NOTE: The "console=ttyS0" parameter routes terminal output to the serial0 device, which
 # can be viewed in Qemu-gtk under the View menu or by pressing Ctrl+Alt+4
 qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -device bochs-display -append "console=ttyS0 consoleblank=0 vt.global_cursor_default=0"
+
+#qemu-system-x86_64 -cdrom ./bin/linext.iso -device bochs-display
