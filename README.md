@@ -24,7 +24,7 @@ For testing via a virtual machine, you will need qemu installed:
 
 ## License
 
-This project's source code is shared under the zlib license. See accompanying [license file](https://github.com/tspike2k/linext/LICENSE.txt). All dependencies are under their own specific licenses.
+This project's source code is shared under the zlib license. See accompanying [license file](https://github.com/tspike2k/linext/blob/main/LICENSE.txt). All dependencies are under their own specific licenses.
 
 ## Special Thanks
 
