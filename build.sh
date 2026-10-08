@@ -2,7 +2,7 @@
 mkdir -p ./bin/rootfs/dev
 mkdir -p ./bin/rootfs/proc
 mkdir -p ./bin/rootfs/sys
-gcc -static -o ./bin/rootfs/init src/init.c -I/usr/include/drm -lm
+gcc -static -o ./bin/rootfs/init src/init_fbdev.c -I/usr/include/drm -lm
 
 # Gather all the files and directories listed in ./bin/rootfs and then convert them into a
 # cpio archive, which we compress using gzip.

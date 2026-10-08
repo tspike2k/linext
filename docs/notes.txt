@@ -1,0 +1,37 @@
+------------------------------------------------------
+----Getting video output through Qemu (10/08/2026)----
+------------------------------------------------------
+
+After using makeconfig to create the default .config file, ensure the following are enabled in the resulting .config file:
+
+    CONFIG_EFI_STUB=y
+    CONFIG_FB=y
+    CONFIG_FB_SIMPLE=y
+    CONFIG_DRM_BOCHS=y (or CONFIG_FB_BOCHS=y if that one exists)
+
+Then you can test the kernel using the following:
+	qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -device bochs-display
+
+---------------------------------------------------------------
+----The state of Fbdev emulation/compatibility (10/08/2026)----
+---------------------------------------------------------------
+
+It sounds as though the Linux kernel has largely depricated fbdev in favor of DRM. Compatibility is currently provided via limited emulation through DRM. This emulation is optional and must be enable when building the Kernel (CONFIG_DRM_FBDEV_EMULATION). Though fbdev supports both double buffering and V-sync using ioctls (FBIOPAN_DISPLAY and FBIO_WAITFORVSYNC), these do not appear to work with DRM emulation. This is unfortunate, as the API is incredibly simple to work with. Oh well.
+
+User LiquidAcid had this to say in 2015:
+
+	None of the methods used in the linked C code work, since all vsync related ioctls are no-ops for the fbdev emulation layer. So this doesn't help you in any way.
+
+	Since it can't be pointed out enough. It is _not_ possible to eliminate tearing when using the fbdev emulation layer. All methods to check whether the scanout hardware is currently inside the vblank period (and therefore it is safe to change the scanout buffer) are _not_ available here. It doesn't matter if you throw two, three or 15 backbuffers at the problem, it won't help you here.
+
+	[...]
+
+	Fixing this in kernelspace is not feasible. The fbdev emulation layer is just that, a compatibility layer, and as such only supplies a bare minimum of functionality. If anything this layer is going away completly. The Intel DRM already has a kernel config option that completly disabled the emulation layer and if you follow the corresponding mailing lists closely, you're aware that people are very much in favor of deprecating (and then removing) the whole framebuffer subsystem. The only reason why it's still there is because of backward compatibility reasons (not all framebuffer drivers have a DRM equivalent).
+
+	Now if you wanted to properly implement the 'FBIO_WAITFORVSYNC' and the 'FBIOGET_VBLANK' ioctl, you would have to rewrite large chunks of the DRM layer. And that's not going to happen. Well, if someone were to actually do this, and I doubt there are many people with the expertise, then it would never land upstream. Like I said, the emulation layer is going away, nobody wants it to grow.
+
+	Why do I say 'large chunks'? Because semantics are totally different. For the framebuffer subystem you usually do WAITFORVSYNC and as soon as that returns, you pan your display to the portion you want the scanout hardware to display. The DRM layer doesn't give you this information. You can still setup the scanout buffer, but there's no API to wait for a vsync to happen. Instead you give your buffer to the API and request that it gets selected as scanout buffer in the next possible vblank period. You can sign up for a notification when that happens, and that's how you know the buffer is actually presented on screen.
+
+
+Sources:
+https://forum.odroid.com/viewtopic.php?f=55&t=8741

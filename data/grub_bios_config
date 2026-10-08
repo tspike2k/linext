@@ -3,6 +3,7 @@ set timeout=10
 menuentry 'linext' --class os {
     insmod gzio
     insmod part_msdos
+#    linux /boot/bzImage console=ttyS0 consoleblank=0 vt.global_cursor_default=0
     linux /boot/bzImage
     initrd /boot/initramfs.cpio.gz
 }
