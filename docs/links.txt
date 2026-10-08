@@ -1,0 +1,39 @@
+This is an unsorted dump of links that were either useful during various stages of the project or links that seemed too useful to risk not being able to find them again.
+
+
+https://github.com/mranv/minimalOS
+https://medium.com/@ThyCrow/compiling-the-linux-kernel-and-creating-a-bootable-iso-from-it-6afb8d23ba22
+https://www.reddit.com/r/osdev/comments/l5h4je/booting_a_bare_linux_kernel_with_a_custom_init/?rdt=63733
+
+https://landley.net/writing/rootfs-programming.html
+
+https://unix.stackexchange.com/questions/174062/can-the-init-process-be-a-shell-script-in-linux
+https://superuser.com/questions/320529/how-to-create-a-linux-system-that-runs-a-single-application
+https://stackoverflow.com/questions/35245247/writing-my-own-init-executable
+
+
+In-depth sources in initramfs:
+https://trac.gateworks.com/wiki/linux/initramfs
+https://wiki.gentoo.org/wiki/Initramfs_-_make_your_own
+https://wiki.gentoo.org/wiki/Custom_Initramfs
+
+On writing a custom "init" binary for initramfs:
+
+https://www.experts-exchange.com/questions/29183550/linux-kernel-mount-proc-at-boot-time-before-running-init.html
+https://unix.stackexchange.com/questions/52713/how-to-populate-dev-directory-when-building-my-own-initrd
+https://unix.stackexchange.com/questions/639453/how-can-i-mount-dev-from-c
+https://github.com/davmac314/dinit/blob/master/doc/linux/DINIT-AS-INIT.md
+
+
+Trying to get fb0 to work:
+https://bbs.archlinux.org/viewtopic.php?id=177299
+https://www.linuxquestions.org/questions/debian-26/squeeze-with-xserver-xfbdev-but-no-dev-fb0-so-no-x-916588/
+
+Fbdev double buffering issues:
+https://github.com/lengfeld/fb-double-buffering-tests/tree/main
+https://forum.odroid.com/viewtopic.php?f=55&t=8741
+
+
+Examples of how to use fbdev and drm can be found here:
+	https://web.archive.org/web/20170607214158/http://betteros.org/tut/graphics1.php
+
