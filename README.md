@@ -22,9 +22,9 @@ For testing via a virtual machine, you will need qemu installed:
 
 `sudo pacman -S qemu-system-x86 qemu-ui-gtk`
 
-## Building
+## Compiling
 
-To build the project, navigate to the root directory of the project. From there, run the `build_kernel.sh` script followed by the `build.sh` script. This should both build both the Linux kernel and this project's userland. To test the project in a virtual machine, run the `test.sh` script.
+To compile, navigate to the root directory of the project. From there, first run the `build_kernel.sh` script to compile the Linux kernel. This may take a while on the first run. Next, run the `build.sh` script to build the userland. At this point the `test.sh` script can be used to run the project inside the qemu virtual machine. Optionally, `build_iso.sh` can be used to create a live image that can either be tested in a virtual machine or burned to a disc/USB stick and run on a physical computer.
 
 ## License
 
@@ -32,4 +32,4 @@ This project's source code is shared under the zlib license. See accompanying [l
 
 ## Special Thanks
 
-Special thanks to Linus Torvalds and all the Linux kernel developers for making industry strength software that's so widely available even the author can horse around with it.
+Thanks to Linus Torvalds and all the Linux kernel developers for making industry strength software that even hobbyists can horse around with in their spare time.
