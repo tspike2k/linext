@@ -19,8 +19,19 @@ freely, subject to the following restrictions:
 */
 
 /*
-!!!IMPORTANT!!! This has not been tested on hardware AT ALL. Right now all this is experimental
-only,
+The code for initializing and using DRM is based primarily on an old BetterOS article and
+the YouTube tutorial series "OS development using the Linux kernel" by Low Level Devel.
+The last two video in particular covered DRM/KMS and were very helpful in getting this
+working.
+
+
+Here is an archive of the BetterOS article:
+https://web.archive.org/web/20170607214158/http://betteros.org/tut/graphics1.php
+
+Here are the two video and source code for the Low Level Devel series:
+https://www.youtube.com/watch?v=86tz5m0hy9M
+https://www.youtube.com/watch?v=wjnLBjLM2QQ
+https://github.com/rockytriton/LLD/tree/main/linux_os
 */
 
 
@@ -88,22 +99,6 @@ static void sleep_ns(u64 nanoseconds){
     }
 }
 
-static void draw_gradiant(u32 *pixels, u32 pixels_w, u32 pixels_h, u32 stride, f32 target_x, f32 target_y){
-    for_count(u32, y, pixels_h){
-        for_count(u32, x, pixels_w){
-            f32 dx = ((f32)x) / (f32)pixels_w;
-            f32 dy = ((f32)y) / (f32)pixels_h;
-
-            f32 value = 1.0f-dist(dx - target_x, dy - target_y);
-            u32 b = (u8)(value * 255.0f);
-
-            u32 color = 0xff000000 | (b << 0);
-            pixels[x + y * stride] = color;
-        }
-    }
-}
-
-// TODO: Include pitch?
 typedef struct{
     u32 *data;
     u32  width;
@@ -114,6 +109,40 @@ typedef struct{
     u32  total_bytes;
 } DRM_Framebuffer;
 
+static void draw_gradiant(DRM_Framebuffer *dest, f32 target_x, f32 target_y){
+#if 0
+    u32 line_advance = dest->width - dest->stride;
+    u32 *pixels = dest->data;
+    for_count(u32, y, dest->height){
+        for_count(u32, x, dest->width){
+            f32 dx = ((f32)x) / (f32)dest->width;
+            f32 dy = ((f32)y) / (f32)dest->height;
+
+            f32 value = 1.0f-dist(dx - target_x, dy - target_y);
+            u32 b = (u8)(value * 255.0f);
+
+            u32 color = 0xff000000 | (b << 0);
+            *pixels = color;
+            pixels++;
+        }
+        pixels += line_advance;
+    }
+#else
+    for_count(u32, y, dest->height){
+        for_count(u32, x, dest->width){
+            f32 dx = ((f32)x) / (f32)dest->width;
+            f32 dy = ((f32)y) / (f32)dest->height;
+
+            f32 value = 1.0f-dist(dx - target_x, dy - target_y);
+            u32 b = (u8)(value * 255.0f);
+
+            u32 color = 0xff000000 | (b << 0);
+            dest->data[x + y * dest->stride] = color;
+        }
+    }
+#endif
+}
+
 // Double buffering
 #define Framebuffers_Count 2
 
@@ -121,6 +150,7 @@ typedef struct {
     int fd;
     struct drm_mode_card_res card_resources;
     DRM_Framebuffer framebuffers[Framebuffers_Count];
+    u32 crtc_id;
 } DRM_State;
 
 static u64 maybe_alloc_drm_ptr(u32 count, u32 size){
@@ -263,6 +293,8 @@ static bool drm_init(DRM_State *s){
         for_count(u32, mode_index, connector.count_modes){
             struct drm_mode_modeinfo *mode = &modes[mode_index];
 
+            printf("mode %03d: %ux%u\n", mode_index, mode->hdisplay, mode->vdisplay);
+
             // TODO: Do modes include bit-depth? Can we get this information? We don't want to
             // pick a mode based on resolution and then get bitten down the line when the
             // bit-depth is too low.
@@ -270,6 +302,13 @@ static bool drm_init(DRM_State *s){
             if(mode_score > best_mode_score){
                 best_mode_score = mode_score;
                 best_mode = mode;
+            }
+
+            // TODO: This is Qemu test code!
+            // TODO: Make a Qemu-specific build for this?
+            if(mode->hdisplay == 800 && mode->vdisplay == 600){
+                /*best_mode = mode;*/
+                break;
             }
         }
 
@@ -368,6 +407,8 @@ static bool drm_init(DRM_State *s){
             continue;
         }
 
+        s->crtc_id = encoder.crtc_id;
+
         // TODO: This doesn't sit right with me. The framebuffers could potentially have
         // different fb_ids, no? If so, does that mean we need to set MKS for each
         // framebuffer individually? Maybe it's fine since framebuffer[0] is the front
@@ -392,10 +433,6 @@ static bool drm_init(DRM_State *s){
         break;
     }
 
-    // Stop being the master of the DRI device.
-    // TODO: Do we really need to test this ioctl?
-	ioctl(s->fd, DRM_IOCTL_DROP_MASTER, 0);
-
     if(dumb_buffer_success)
         printf("Successfuly initialized DRM for device %s\n", device_path);
 
@@ -403,10 +440,18 @@ static bool drm_init(DRM_State *s){
 }
 
 static void drm_destroy(DRM_State *drm){
+    // Stop being the master of the DRI device.
+    // TODO: Do we really need to test this ioctl?
+	ioctl(drm->fd, DRM_IOCTL_DROP_MASTER, 0);
+
     if(drm->fd != -1){
         close(drm->fd);
         drm->fd = -1;
     }
+
+    // TODO: Low Level Devel restores the original crtc before exiting.
+    // Should we do this? It would probably make sense, as it might allow for
+    // logging to become visible again to the end-user during shutdown.
 
     free_if_nonzero((void*)drm->card_resources.fb_id_ptr);
 	free_if_nonzero((void*)drm->card_resources.crtc_id_ptr);
@@ -438,8 +483,13 @@ int main(){
         u64 target_frame_time_ns = ns_from_sec(1.0f/60.0f);
         u64 prev_timestamp_ns = get_timestamp_ns();
 
-        DRM_Framebuffer *dest = &drm.framebuffers[0];
-        printf("dest: %ux%u stride %u\n", dest->width, dest->height, dest->stride);
+        draw_gradiant(&drm.framebuffers[0], 0.5f, 0.5f);
+        u32 backbuffer_index = 1;
+
+        // Use of fd_dest taken directly from Low Level Devel.
+        // TODO: Use poll or epoll instead!
+        fd_set fds;
+        FD_ZERO(&fds);
 
         while(true){
             if(mouse_fd){
@@ -452,12 +502,52 @@ int main(){
                 }
             }
 
-            // TODO: Double-buffering!
-
+            DRM_Framebuffer *dest = &drm.framebuffers[backbuffer_index];
             f32 target_x = 0.5f + ((f32)mouse_x) / (f32)dest->width;
             f32 target_y = 0.5f - ((f32)mouse_y) / (f32)dest->height;
+            draw_gradiant(dest, target_x, target_y);
 
-            draw_gradiant(dest->data, dest->width, dest->height, dest->stride, target_x, target_y);
+            // Request a page flip event for when DRM has finished displaying the frontbuffer.
+            struct drm_mode_crtc_page_flip flip_req = {0};
+            flip_req.fb_id = dest->fb_id;
+            flip_req.crtc_id = drm.crtc_id;
+            flip_req.flags = DRM_MODE_PAGE_FLIP_EVENT;
+
+            if(ioctl(drm.fd, DRM_IOCTL_MODE_PAGE_FLIP, &flip_req) == IOCTL_ERROR){
+                printf("Unable to request page flip: %s\n", strerror(errno));
+                break;
+            }
+
+            FD_SET(drm.fd, &fds);
+            if(select(drm.fd+1, &fds, NULL, NULL, NULL) == -1){
+                printf("Unable to use select on fdset: %s\n", strerror(errno));
+                break;
+            }
+
+            if(FD_ISSET(drm.fd, &fds)){
+                char drm_buffer[1024];
+                ssize_t bytes_read = read(drm.fd, drm_buffer, sizeof(drm_buffer));
+                if(bytes_read > 0){
+                    for(u32 i = 0; i < bytes_read;){
+                        struct drm_event *evt = (struct drm_event *)&drm_buffer[i];
+
+                        switch(evt->type){
+                            case DRM_EVENT_FLIP_COMPLETE:{
+                                DRM_Framebuffer *dest = &drm.framebuffers[backbuffer_index];
+
+                                f32 target_x = 0.5f + ((f32)mouse_x) / (f32)dest->width;
+                                f32 target_y = 0.5f - ((f32)mouse_y) / (f32)dest->height;
+
+                                draw_gradiant(dest, target_x, target_y);
+                                backbuffer_index = (backbuffer_index + 1) % Framebuffers_Count;
+                            } break;
+                        }
+
+                        i += evt->length;
+                    }
+                }
+            }
+#if 0
 
             // Frame-rate limiter
             u64 current_timestamp_ns = get_timestamp_ns();
@@ -467,6 +557,7 @@ int main(){
             }
 
             prev_timestamp_ns = current_timestamp_ns;
+#endif
         }
     }
     drm_destroy(&drm);
