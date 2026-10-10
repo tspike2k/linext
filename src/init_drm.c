@@ -21,9 +21,8 @@ freely, subject to the following restrictions:
 /*
 The code for initializing and using DRM is based primarily on an old BetterOS article and
 the YouTube tutorial series "OS development using the Linux kernel" by Low Level Devel.
-The last two video in particular covered DRM/KMS and were very helpful in getting this
-working.
-
+The last two videos in particular covered DRM/KMS served as the foundation for most of this
+code.
 
 Here is an archive of the BetterOS article:
 https://web.archive.org/web/20170607214158/http://betteros.org/tut/graphics1.php
@@ -50,6 +49,7 @@ https://github.com/rockytriton/LLD/tree/main/linux_os
 #include <drm/drm.h>
 #include <drm/drm_mode.h>
 #include <stdlib.h> // malloc,free
+#include <poll.h>
 
 typedef int8_t   s8;
 typedef uint8_t  u8;
@@ -307,7 +307,7 @@ static bool drm_init(DRM_State *s){
             // TODO: This is Qemu test code!
             // TODO: Make a Qemu-specific build for this?
             if(mode->hdisplay == 800 && mode->vdisplay == 600){
-                /*best_mode = mode;*/
+                best_mode = mode;
                 break;
             }
         }
@@ -459,6 +459,16 @@ static void drm_destroy(DRM_State *drm){
 	free_if_nonzero((void*)drm->card_resources.encoder_id_ptr);
 }
 
+typedef struct{
+    s8 data[3];
+} Mouse_Event;
+
+enum{
+    Poll_FD_Index_Mouse,
+    Poll_FD_Index_DRM,
+    Poll_FD_Index_Total,
+};
+
 int main(){
     // In order for the kernel to populate /dev with device files, we need to mount /dev as
     // a devtmpfs file system.
@@ -469,16 +479,25 @@ int main(){
 
     // TODO: Mount both /proc and /sys
 
+    u32            poll_fds_count = 0;
+    struct pollfd  poll_fds[2];
+    struct pollfd *poll_fd_mouse = NULL;
+    struct pollfd *poll_fd_drm   = NULL;
+
     int mouse_fd = open("/dev/input/mice", O_RDONLY|O_NONBLOCK);
     if(mouse_fd == -1){
         printf("Warning! Unable to open /dev/input/mice: %s\n", strerror(errno));
+    }
+    else{
+        poll_fd_mouse = &poll_fds[poll_fds_count++];
+        poll_fd_mouse->fd = mouse_fd;
+        poll_fd_mouse->events = POLLIN;
     }
 
     DRM_State drm = {0};
     if(drm_init(&drm)){
         int mouse_x = 0;
         int mouse_y = 0;
-        s8 mouse_event[3];
 
         u64 target_frame_time_ns = ns_from_sec(1.0f/60.0f);
         u64 prev_timestamp_ns = get_timestamp_ns();
@@ -486,67 +505,73 @@ int main(){
         draw_gradiant(&drm.framebuffers[0], 0.5f, 0.5f);
         u32 backbuffer_index = 1;
 
-        // Use of fd_dest taken directly from Low Level Devel.
-        // TODO: Use poll or epoll instead!
-        fd_set fds;
-        FD_ZERO(&fds);
+        poll_fd_drm = &poll_fds[poll_fds_count++];
+        poll_fd_drm->fd     = drm.fd;
+        poll_fd_drm->events = POLLIN;
+
+        bool drawn_backbuffer = false;
 
         while(true){
-            if(mouse_fd){
+            if(poll(poll_fds, poll_fds_count, 0) < 0){
+                printf("Polling fds failed: %s. Aborting\n", strerror(errno));
+                break;
+            }
+
+            if(mouse_fd != -1 && poll_fd_mouse->revents & POLLIN){
+                printf("Before mouse read\n");
+                char buffer[1024];
                 // TODO: Handle interrupts
-                // TODO: Read more than one event at a time.
-                ssize_t bytes_read = read(mouse_fd, mouse_event, sizeof(mouse_event));
-                if(bytes_read == sizeof(mouse_event)){
-                    mouse_x += mouse_event[1];
-                    mouse_y += mouse_event[2];
+                ssize_t bytes_read = read(mouse_fd, buffer, sizeof(buffer));
+                for(u32 i = 0; i < bytes_read; i += sizeof(3)){
+                    Mouse_Event *evt = (Mouse_Event *)&buffer[i];
+                    mouse_x += evt->data[1];
+                    mouse_y += evt->data[2];
                 }
+                printf("After mouse read\n");
             }
 
-            DRM_Framebuffer *dest = &drm.framebuffers[backbuffer_index];
-            f32 target_x = 0.5f + ((f32)mouse_x) / (f32)dest->width;
-            f32 target_y = 0.5f - ((f32)mouse_y) / (f32)dest->height;
-            draw_gradiant(dest, target_x, target_y);
+            if(!drawn_backbuffer){
+                DRM_Framebuffer *dest = &drm.framebuffers[backbuffer_index];
+                f32 target_x = 0.5f + ((f32)mouse_x) / (f32)dest->width;
+                f32 target_y = 0.5f - ((f32)mouse_y) / (f32)dest->height;
+                draw_gradiant(dest, target_x, target_y);
 
-            // Request a page flip event for when DRM has finished displaying the frontbuffer.
-            struct drm_mode_crtc_page_flip flip_req = {0};
-            flip_req.fb_id = dest->fb_id;
-            flip_req.crtc_id = drm.crtc_id;
-            flip_req.flags = DRM_MODE_PAGE_FLIP_EVENT;
+                // Request a page flip event for when DRM has finished displaying the frontbuffer.
+                struct drm_mode_crtc_page_flip flip_req = {0};
+                flip_req.fb_id = dest->fb_id;
+                flip_req.crtc_id = drm.crtc_id;
+                flip_req.flags = DRM_MODE_PAGE_FLIP_EVENT;
 
-            if(ioctl(drm.fd, DRM_IOCTL_MODE_PAGE_FLIP, &flip_req) == IOCTL_ERROR){
-                printf("Unable to request page flip: %s\n", strerror(errno));
-                break;
+                if(ioctl(drm.fd, DRM_IOCTL_MODE_PAGE_FLIP, &flip_req) == IOCTL_ERROR){
+                    printf("Unable to request page flip: %s\n", strerror(errno));
+                    break;
+                }
+
+                drawn_backbuffer = true;
             }
 
-            FD_SET(drm.fd, &fds);
-            if(select(drm.fd+1, &fds, NULL, NULL, NULL) == -1){
-                printf("Unable to use select on fdset: %s\n", strerror(errno));
-                break;
-            }
-
-            if(FD_ISSET(drm.fd, &fds)){
+            /*if(poll_fd_drm->revents & POLLIN)*/
+            // TODO: Here we're doing a blocking read so that we can wait until the page can be
+            // flipped. This is pretty hacky, but it does mean we're not burning CPU time
+            // in a busy loop waiting for this to occur. There is probably a much smarter way
+            // to handle this.
+            {
                 char drm_buffer[1024];
+                // TODO: Handle interrupts
                 ssize_t bytes_read = read(drm.fd, drm_buffer, sizeof(drm_buffer));
-                if(bytes_read > 0){
-                    for(u32 i = 0; i < bytes_read;){
-                        struct drm_event *evt = (struct drm_event *)&drm_buffer[i];
+                for(u32 i = 0; i < bytes_read;){
+                    struct drm_event *evt = (struct drm_event *)&drm_buffer[i];
 
-                        switch(evt->type){
-                            case DRM_EVENT_FLIP_COMPLETE:{
-                                DRM_Framebuffer *dest = &drm.framebuffers[backbuffer_index];
-
-                                f32 target_x = 0.5f + ((f32)mouse_x) / (f32)dest->width;
-                                f32 target_y = 0.5f - ((f32)mouse_y) / (f32)dest->height;
-
-                                draw_gradiant(dest, target_x, target_y);
-                                backbuffer_index = (backbuffer_index + 1) % Framebuffers_Count;
-                            } break;
-                        }
-
-                        i += evt->length;
+                    switch(evt->type){
+                        case DRM_EVENT_FLIP_COMPLETE:{
+                            backbuffer_index = (backbuffer_index + 1) % Framebuffers_Count;
+                            drawn_backbuffer = false;
+                        } break;
                     }
+
+                    i += evt->length;
                 }
-            }
+            /*}*/
 #if 0
 
             // Frame-rate limiter
