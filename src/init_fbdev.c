@@ -29,8 +29,6 @@ not ideal.
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
-/*#include <drm/drm.h>*/
-/*#include <drm/drm_mode.h>*/
 #include <sys/ioctl.h>
 #include <dirent.h>
 #include <string.h>
@@ -225,13 +223,6 @@ int main(){
     }
 
     /*print_dir("/dev");*/
-
-#if 0
-    int dri_fd = open("/dev/dri/card0", O_RDWR);
-    if(dri_fd == -1){
-        printf("Failed to open DRI fd: %s\n", strerror(errno));
-    }
-#endif
 
     int mouse_fd = open("/dev/input/mice", O_RDONLY|O_NONBLOCK);
     if(mouse_fd == -1){

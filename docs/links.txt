@@ -37,3 +37,12 @@ https://forum.odroid.com/viewtopic.php?f=55&t=8741
 Examples of how to use fbdev and drm can be found here:
 	https://web.archive.org/web/20170607214158/http://betteros.org/tut/graphics1.php
 
+
+
+DRM/KMS sources:
+
+https://roscidus.com/blog/blog/2025/11/16/libdrm-ocaml/
+https://www.youtube.com/watch?v=86tz5m0hy9M
+
+https://jyos-sw.medium.com/drm-and-kms-0bb2f50c035d
+https://gist.github.com/franzflasch/75b98a6df413efdcefba92fe585a2406
