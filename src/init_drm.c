@@ -307,7 +307,7 @@ static bool drm_init(DRM_State *s){
             // TODO: This is Qemu test code!
             // TODO: Make a Qemu-specific build for this?
             if(mode->hdisplay == 800 && mode->vdisplay == 600){
-                best_mode = mode;
+                /*best_mode = mode;*/
                 break;
             }
         }
@@ -571,7 +571,7 @@ int main(){
 
                     i += evt->length;
                 }
-            /*}*/
+            }
 #if 0
 
             // Frame-rate limiter
