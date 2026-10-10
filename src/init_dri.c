@@ -148,6 +148,13 @@ static void drm_free_connector(struct drm_mode_get_connector *connector){
     if(connector->prop_values_ptr) free((void *)connector->prop_values_ptr);
 }
 
+static u64 get_timestamp_ns(){
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+    u64 result = ts.tv_sec * 1000000000 + ts.tv_nsec;
+    return result;
+}
+
 // Adapted from the following sources:
 // https://web.archive.org/web/20170607214158/http://betteros.org/tut/graphics1.php#doublebuffer
 static bool drm_init(DRM_State *s){
@@ -417,24 +424,54 @@ int main(){
 
     // TODO: Mount both /proc and /sys
 
+    int mouse_fd = open("/dev/input/mice", O_RDONLY|O_NONBLOCK);
+    if(mouse_fd == -1){
+        printf("Warning! Unable to open /dev/input/mice: %s\n", strerror(errno));
+    }
+
     DRM_State drm = {0};
     if(drm_init(&drm)){
+        int mouse_x = 0;
+        int mouse_y = 0;
+        s8 mouse_event[3];
+
+        u64 target_frame_time_ns = ns_from_sec(1.0f/60.0f);
+        u64 prev_timestamp_ns = get_timestamp_ns();
+
         DRM_Framebuffer *dest = &drm.framebuffers[0];
         printf("dest: %ux%u stride %u\n", dest->width, dest->height, dest->stride);
 
         while(true){
+            if(mouse_fd){
+                // TODO: Handle interrupts
+                // TODO: Read more than one event at a time.
+                ssize_t bytes_read = read(mouse_fd, mouse_event, sizeof(mouse_event));
+                if(bytes_read == sizeof(mouse_event)){
+                    mouse_x += mouse_event[1];
+                    mouse_y += mouse_event[2];
+                }
+            }
+
             // TODO: Double-buffering!
 
-            f32 target_x = 0.5f;
-            f32 target_y = 0.5f;
+            f32 target_x = 0.5f + ((f32)mouse_x) / (f32)dest->width;
+            f32 target_y = 0.5f - ((f32)mouse_y) / (f32)dest->height;
 
             draw_gradiant(dest->data, dest->width, dest->height, dest->stride, target_x, target_y);
-            sleep_ns(ns_from_sec(1));
+
+            // Frame-rate limiter
+            u64 current_timestamp_ns = get_timestamp_ns();
+            u64 elasped_time_ns = current_timestamp_ns - prev_timestamp_ns;
+            if(elasped_time_ns < target_frame_time_ns){
+                sleep_ns(target_frame_time_ns - elasped_time_ns);
+            }
+
+            prev_timestamp_ns = current_timestamp_ns;
         }
     }
     drm_destroy(&drm);
 
-    // TODO: How do we gracefully exit when we're the init script?
+    // TODO: How do we gracefully exit when we're the init script/program?
     while(1){
 
     }
