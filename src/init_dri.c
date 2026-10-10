@@ -60,6 +60,8 @@ static void print_dir(const char *dir_path){
     }
 }
 
+#define ns_from_sec(seconds) (u64)(((f32)(seconds))*1000000000.0f)
+
 #define free_if_nonzero(a) if((a)) free((a))
 #define for_count(T, i, max) for(T i = 0; i < max; i++)
 
@@ -317,7 +319,7 @@ static bool drm_init(DRM_State *s){
             DRM_Framebuffer *framebuffer = &s->framebuffers[framebuffer_index];
             framebuffer->width       = create_dumb.width;
             framebuffer->height      = create_dumb.height;
-            framebuffer->stride      = create_dumb.pitch;
+            framebuffer->stride      = create_dumb.pitch / (create_dumb.bpp / 8);
             framebuffer->handle      = create_dumb.handle;
             framebuffer->fb_id       = fb_dumb.fb_id;
             framebuffer->total_bytes = create_dumb.size;
@@ -417,16 +419,17 @@ int main(){
 
     DRM_State drm = {0};
     if(drm_init(&drm)){
-        while(true){
-            for_count(u32, i, 2){
-                DRM_Framebuffer *dest = &drm.framebuffers[i];
+        DRM_Framebuffer *dest = &drm.framebuffers[0];
+        printf("dest: %ux%u stride %u\n", dest->width, dest->height, dest->stride);
 
-                for_count(u32, y, dest->height){
-                    for_count(u32, x, dest->width){
-                        dest->data[x + y * dest->width] = 0xff0000ff;
-                    }
-                }
-            }
+        while(true){
+            // TODO: Double-buffering!
+
+            f32 target_x = 0.5f;
+            f32 target_y = 0.5f;
+
+            draw_gradiant(dest->data, dest->width, dest->height, dest->stride, target_x, target_y);
+            sleep_ns(ns_from_sec(1));
         }
     }
     drm_destroy(&drm);
