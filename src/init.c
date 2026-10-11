@@ -1,22 +1,8 @@
-/*
-Copyright (C) 2026 tspike <www.github.com/tspike2k>
-
-This software is provided 'as-is', without any express or implied
-warranty.  In no event will the authors be held liable for any damages
-arising from the use of this software.
-
-Permission is granted to anyone to use this software for any purpose,
-including commercial applications, and to alter it and redistribute it
-freely, subject to the following restrictions:
-
-1. The origin of this software must not be misrepresented; you must not
-   claim that you wrote the original software. If you use this software
-   in a product, an acknowledgment in the product documentation would be
-   appreciated but is not required.
-2. Altered source versions must be plainly marked as such, and must not be
-   misrepresented as being the original software.
-3. This notice may not be removed or altered from any source distribution.
-*/
+//------------------------------------------------------------------------------
+// Authors:   tspike (github.com/tspike2k)
+// Copyright: Copyright (c) 2026
+// License:   Boost Software License 1.0 (https://www.boost.org/LICENSE_1_0.txt)
+//------------------------------------------------------------------------------
 
 /*
 The code for initializing and using DRM is based primarily on an old BetterOS article and
@@ -50,6 +36,11 @@ https://github.com/rockytriton/LLD/tree/main/linux_os
 #include <drm/drm_mode.h>
 #include <stdlib.h> // malloc,free
 #include <poll.h>
+#include "cbed/common.c"
+#include "cbed/math.c"
+#include "assets.c"
+#include "cbed/font.c"
+#include "cbed/draw.c"
 
 typedef int8_t   s8;
 typedef uint8_t  u8;
@@ -74,12 +65,6 @@ static void print_dir(const char *dir_path){
 #define ns_from_sec(seconds) (u64)(((f32)(seconds))*1000000000.0f)
 
 #define free_if_nonzero(a) if((a)) free((a))
-#define for_count(T, i, max) for(T i = 0; i < max; i++)
-
-static f32 lerp(f32 a, f32 b, f32 t){
-    f32 result = a + (b - a)*t;
-    return result;
-}
 
 static f32 dist(f32 x, f32 y){
     f32 result = sqrt(x*x + y*y);
@@ -109,9 +94,9 @@ typedef struct{
     u32  total_bytes;
 } DRM_Framebuffer;
 
-static void draw_gradiant(DRM_Framebuffer *dest, f32 target_x, f32 target_y){
+static void draw_gradiant(Blit_Canvas *dest, f32 target_x, f32 target_y){
     u32 line_advance = dest->stride - dest->width;
-    u32 *pixels = dest->data;
+    u32 *pixels = dest->pixels;
     for_count(u32, y, dest->height){
         for_count(u32, x, dest->width){
             f32 dx = ((f32)x) / (f32)dest->width;
@@ -454,6 +439,17 @@ enum{
     Poll_FD_Index_Total,
 };
 
+static Blit_Dest blit_dest_from_drm_fb(DRM_Framebuffer *framebuffer){
+    Blit_Dest result = {0};
+
+    result.canvas.pixels = framebuffer->data;
+    result.canvas.width  = framebuffer->width;
+    result.canvas.height = framebuffer->height;
+    result.canvas.stride = framebuffer->stride;
+
+    return result;
+}
+
 int main(){
     // In order for the kernel to populate /dev with device files, we need to mount /dev as
     // a devtmpfs file system.
@@ -479,6 +475,12 @@ int main(){
         poll_fd_mouse->events = POLLIN;
     }
 
+    Font *font = (Font *)font_en;
+    u8 *font_base = (u8 *)font;
+    Font_Info *info = (Font_Info *)&font_base[font->font_info_offset];
+    const char *font_name = (char *)(info+1);
+    fmt_msg("Loaded font '{0}' at {1}px\n", fmt_cstr(font_name), fmt_i(info->height));
+
     DRM_State drm = {0};
     if(drm_init(&drm)){
         int mouse_x = 0;
@@ -487,14 +489,18 @@ int main(){
         u64 target_frame_time_ns = ns_from_sec(1.0f/60.0f);
         u64 prev_timestamp_ns = get_timestamp_ns();
 
-        draw_gradiant(&drm.framebuffers[0], 0.5f, 0.5f);
-        u32 backbuffer_index = 1;
-
         poll_fd_drm = &poll_fds[poll_fds_count++];
         poll_fd_drm->fd     = drm.fd;
         poll_fd_drm->events = POLLIN;
 
         bool drawn_backbuffer = false;
+        u32 backbuffer_index = 1;
+        Blit_Dest canvas[Framebuffers_Count];
+        for_count(u32, i, Framebuffers_Count){
+            canvas[i] = blit_dest_from_drm_fb(&drm.framebuffers[i]);
+        }
+
+        draw_gradiant(&canvas[0].canvas, 0.5f, 0.5f);
 
         while(true){
             if(poll(poll_fds, poll_fds_count, 0) < 0){
@@ -516,14 +522,15 @@ int main(){
             }
 
             if(!drawn_backbuffer){
-                DRM_Framebuffer *dest = &drm.framebuffers[backbuffer_index];
-                f32 target_x = 0.5f + ((f32)mouse_x) / (f32)dest->width;
-                f32 target_y = 0.5f - ((f32)mouse_y) / (f32)dest->height;
-                draw_gradiant(dest, target_x, target_y);
+                Blit_Dest *dest = &canvas[backbuffer_index];
+                f32 target_x = 0.5f + ((f32)mouse_x) / (f32)dest->canvas.width;
+                f32 target_y = 0.5f - ((f32)mouse_y) / (f32)dest->canvas.height;
+                draw_gradiant(&dest->canvas, target_x, target_y);
+                blit_text(dest, v3(200, 200, 0), font, str_lit("Hello, world!"));
 
                 // Request a page flip event for when DRM has finished displaying the frontbuffer.
                 struct drm_mode_crtc_page_flip flip_req = {0};
-                flip_req.fb_id = dest->fb_id;
+                flip_req.fb_id = drm.framebuffers[backbuffer_index].fb_id;
                 flip_req.crtc_id = drm.crtc_id;
                 flip_req.flags = DRM_MODE_PAGE_FLIP_EVENT;
 

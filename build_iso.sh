@@ -11,7 +11,7 @@
 FLAGS="-static -O2 "
 
 mkdir -p ./bin/rootfs
-gcc $FLAGS -o ./bin/rootfs/init src/init_drm.c -I/usr/include/drm -lm
+gcc $FLAGS -o ./bin/rootfs/init src/init.c -I/usr/include/drm -lm
 
 # Build the initramfs file so Linux can boot our init code.
 mkdir -p ./bin/rootfs/dev

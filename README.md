@@ -30,7 +30,9 @@ To test on real hardware, first build the kernel (if you haven't already done so
 
 ## License
 
-This project's source code is shared under the zlib license. See accompanying [license file](https://github.com/tspike2k/linext/blob/main/LICENSE.txt). All dependencies are under their own specific licenses.
+The majority of this project's source code is shared under the zlib license. See accompanying [license file](https://github.com/tspike2k/linext/blob/main/LICENSE.txt). All code under the
+
+All dependencies are under their own specific licenses.
 
 ## Special Thanks
 
