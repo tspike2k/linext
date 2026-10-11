@@ -24,7 +24,9 @@ For testing via a virtual machine, you will need qemu installed:
 
 ## Compiling
 
-To compile, navigate to the root directory of the project. From there, first run the `build_kernel.sh` script to compile the Linux kernel. This may take a while on the first run. Next, run the `build.sh` script to build the userland. At this point the `test.sh` script can be used to run the project inside the qemu virtual machine. Optionally, `build_iso.sh` can be used to create a live image that can either be tested in a virtual machine or burned to a disc/USB stick and run on a physical computer.
+To compile, navigate to the root directory of the project. From there, first run the `build_kernel.sh` script to compile the Linux kernel. This may take a while on the first run. To test in a virtual machine, run the `build.sh` script to build the userland and then run `test.sh`. This will launch the project inside a qemu virtual machine.
+
+To test on real hardware, first build the kernel (if you haven't already done so) by running `build_kernel.sh`. Then run `build_iso.sh` to create a live image named *linext.iso* inside the *bin* folder. Burn the live image to a disc or USB stick, insert it into a computer, power the computer on and then select the media as the boot device.
 
 ## License
 

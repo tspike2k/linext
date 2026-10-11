@@ -110,15 +110,14 @@ typedef struct{
 } DRM_Framebuffer;
 
 static void draw_gradiant(DRM_Framebuffer *dest, f32 target_x, f32 target_y){
-#if 0
-    u32 line_advance = dest->width - dest->stride;
+    u32 line_advance = dest->stride - dest->width;
     u32 *pixels = dest->data;
     for_count(u32, y, dest->height){
         for_count(u32, x, dest->width){
             f32 dx = ((f32)x) / (f32)dest->width;
             f32 dy = ((f32)y) / (f32)dest->height;
 
-            f32 value = 1.0f-dist(dx - target_x, dy - target_y);
+            f32 value = 1.0f-dist(dx - target_x, dy - target_y)*8.0f;
             u32 b = (u8)(value * 255.0f);
 
             u32 color = 0xff000000 | (b << 0);
@@ -127,20 +126,6 @@ static void draw_gradiant(DRM_Framebuffer *dest, f32 target_x, f32 target_y){
         }
         pixels += line_advance;
     }
-#else
-    for_count(u32, y, dest->height){
-        for_count(u32, x, dest->width){
-            f32 dx = ((f32)x) / (f32)dest->width;
-            f32 dy = ((f32)y) / (f32)dest->height;
-
-            f32 value = 1.0f-dist(dx - target_x, dy - target_y);
-            u32 b = (u8)(value * 255.0f);
-
-            u32 color = 0xff000000 | (b << 0);
-            dest->data[x + y * dest->stride] = color;
-        }
-    }
-#endif
 }
 
 // Double buffering
@@ -304,12 +289,12 @@ static bool drm_init(DRM_State *s){
                 best_mode = mode;
             }
 
-            // TODO: This is Qemu test code!
-            // TODO: Make a Qemu-specific build for this?
+#ifdef VM_Target
             if(mode->hdisplay == 800 && mode->vdisplay == 600){
-                /*best_mode = mode;*/
+                best_mode = mode;
                 break;
             }
+#endif
         }
 
         if(best_mode){
