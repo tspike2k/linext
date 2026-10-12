@@ -64,6 +64,7 @@ static void print_dir(const char *dir_path){
 }
 
 #define ns_from_sec(seconds) (u64)(((f32)(seconds))*1000000000.0f)
+#define sec_from_ns(ns) (f32)(((f32)(ns))/1000000000.0f)
 
 #define free_if_nonzero(a) if((a)) free((a))
 
@@ -96,11 +97,13 @@ typedef struct{
 } DRM_Framebuffer;
 
 static void draw_gradiant(Blit_Canvas *dest, f32 target_x, f32 target_y){
+    f32 aspect_ratio = (f32)dest->width / (f32)dest->height;
+
     u32 line_advance = dest->stride - dest->width;
     u32 *pixels = dest->pixels;
     for_count(u32, y, dest->height){
         for_count(u32, x, dest->width){
-            f32 dx = ((f32)x) / (f32)dest->width;
+            f32 dx = aspect_ratio*((f32)x) / (f32)dest->width;
             f32 dy = ((f32)y) / (f32)dest->height;
 
             f32 value = 1.0f-dist(dx - target_x, dy - target_y)*8.0f;
@@ -477,6 +480,7 @@ typedef struct{
 typedef struct{
     u32  parts_count;
     Ball parts[256];
+    Vec2 vel;
 } Snake;
 
 static void snake_add_part(Snake *snake, Vec2 p, f32 radius, u32 color){
@@ -487,6 +491,24 @@ static void snake_add_part(Snake *snake, Vec2 p, f32 radius, u32 color){
     part->color  = color;
 }
 
+static u32 lerp_colors(u32 a, u32 b, f32 t){
+    // TODO: This should probably be done in linear RGB-space.
+    Vec4 av = v4(
+        ((a >> 16) & 0xff), ((a >>  8) & 0xff),
+        ((a >>  0) & 0xff), ((a >> 24) & 0xff)
+    );
+
+    Vec4 bv = v4(
+        ((b >> 16) & 0xff), ((b >>  8) & 0xff),
+        ((b >>  0) & 0xff), ((b >> 24) & 0xff)
+    );
+
+    Vec4 v = v4_lerp(av, bv, t);
+    u32 result = ((u32)v.a) << 24 | ((u32)v.r) << 16
+               | ((u32)v.g) <<  8 | ((u32)v.b) <<  0;
+    return result;
+}
+
 static void blit_gradient_ball(Blit_Dest *dest, Vec2 center, f32 radius, u32 color_a, u32 color_b){
     int min_x = MAX(center.x - radius, 0.0f);
     int min_y = MAX(center.y - radius, 0.0f);
@@ -495,8 +517,12 @@ static void blit_gradient_ball(Blit_Dest *dest, Vec2 center, f32 radius, u32 col
 
     for_range(int, y, min_y, max_y){
         for_range(int, x, min_x, max_x){
-            if(v2_dist_sq(center, v2(x, y)) < squared(radius)){
-                dest->pixels[x + y * dest->stride] = color_a; // TODO: Interpolate colors.
+            Vec2 p = v2(x, y);
+            if(v2_dist_sq(center, p) < squared(radius)){
+                // TODO: Is there a way to interpolate the colors without using a sqrt?
+                f32 t = v2_dist(center, p) / radius;
+                u32 color = lerp_colors(color_a, color_b, t);
+                dest->pixels[x + y * dest->stride] = color;
             }
         }
     }
@@ -565,6 +591,10 @@ int main(){
         while(true){
             Buffer temp_restore = temp;
 
+            u64 current_timestamp_ns = get_timestamp_ns();
+            f32 dt = sec_from_ns(current_timestamp_ns - prev_timestamp_ns);
+            prev_timestamp_ns = current_timestamp_ns;
+
             if(poll(poll_fds, poll_fds_count, 0) < 0){
                 printf("Polling fds failed: %s. Aborting\n", strerror(errno));
                 break;
@@ -584,7 +614,7 @@ int main(){
             // Simulate the snake.
             Ball *head = &snake.parts[0];
             Vec2 snake_dir = v2_normalize(v2_sub(v2(mouse_x, mouse_y), head->p));
-            f32 snake_speed = 2.0f;
+            f32 snake_speed = 32.0f*dt;
             head->p = v2_add(head->p, v2_muls(snake_dir, snake_speed)); // TODO: Account for dt
 
             if(!drawn_backbuffer){
@@ -601,7 +631,7 @@ int main(){
                 blit_text(dest, baseline, font, gen_string("Mouse: %d, %d", &temp, mouse_x, mouse_y));
 
                 Rect cursor = {v2(mouse_x, mouse_y), v2(20, 20)};
-                blit_rect(dest, cursor, 0, 0xff00ffff);
+                /*blit_rect(dest, cursor, 0, 0xff00ffff);*/
 
                 for_count(u32, i, snake.parts_count){
                     Ball *part = &snake.parts[i];

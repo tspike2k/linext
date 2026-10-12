@@ -83,6 +83,7 @@ Cbed_API Vec3  cross(Vec3 a, Vec3 b);
 Cbed_API Vec4  v4_lerp(Vec4 a, Vec4 b, f32 t);
 
 Cbed_API float squared(float n);
+Cbed_API float v2_dist(Vec2 a, Vec2 b);
 Cbed_API float v2_len_sq(Vec2 a);
 Cbed_API float v2_dist_sq(Vec2 a, Vec2 b);
 Cbed_API float v3_dist_sq(Vec3 a, Vec3 b);

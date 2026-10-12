@@ -172,7 +172,7 @@ Cbed_API Vec3 cross(Vec3 a, Vec3 b){
     return result;
 }
 
-Cbed_API float v2_distance_between(Vec2 a, Vec2 b){
+Cbed_API float v2_dist(Vec2 a, Vec2 b){
     Vec2 diff = v2_sub(a, b);
     float result = sqrt(diff.x * diff.x + diff.y * diff.y);
     return result;
