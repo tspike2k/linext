@@ -21,6 +21,7 @@ https://github.com/rockytriton/LLD/tree/main/linux_os
 
 
 #include <stdio.h>
+#include <stdarg.h> // va_start, va_end
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -346,8 +347,6 @@ static bool drm_init(DRM_State *s){
                 framebuffer_error = true;
                 break;
             }
-
-
         }
 
         if(framebuffer_error){
@@ -442,12 +441,65 @@ enum{
 static Blit_Dest blit_dest_from_drm_fb(DRM_Framebuffer *framebuffer){
     Blit_Dest result = {0};
 
-    result.canvas.pixels = framebuffer->data;
-    result.canvas.width  = framebuffer->width;
-    result.canvas.height = framebuffer->height;
-    result.canvas.stride = framebuffer->stride;
+    result.pixels = framebuffer->data;
+    result.width  = framebuffer->width;
+    result.height = framebuffer->height;
+    result.stride = framebuffer->stride;
 
     return result;
+}
+
+u8 g_temp_memory[2*1024*1024];
+
+static String gen_string(const char *fmt, Buffer *buffer, ...){
+    String result = {&buffer->data[buffer->used], 0};
+
+    // When in Rome...
+    va_list args;
+    va_start(args, buffer);
+    int bytes = vsnprintf(result.text, buffer->size - buffer->used, fmt, args);
+    va_end(args);
+
+    if(bytes != -1){
+        result.size = bytes;
+        buffer->used += bytes + 1; // Include the null-terminator
+    }
+
+    return result;
+}
+
+typedef struct{
+    Vec2 p;
+    f32  radius;
+    u32  color;
+} Ball;
+
+typedef struct{
+    u32  parts_count;
+    Ball parts[256];
+} Snake;
+
+static void snake_add_part(Snake *snake, Vec2 p, f32 radius, u32 color){
+    assert(snake->parts_count <  Array_Len(snake->parts));
+    Ball *part = &snake->parts[snake->parts_count++];
+    part->p      = p;
+    part->radius = radius;
+    part->color  = color;
+}
+
+static void blit_gradient_ball(Blit_Dest *dest, Vec2 center, f32 radius, u32 color_a, u32 color_b){
+    int min_x = MAX(center.x - radius, 0.0f);
+    int min_y = MAX(center.y - radius, 0.0f);
+    int max_x = MIN(center.x + radius, (f32)dest->width);
+    int max_y = MIN(center.y + radius, (f32)dest->height);
+
+    for_range(int, y, min_y, max_y){
+        for_range(int, x, min_x, max_x){
+            if(v2_dist_sq(center, v2(x, y)) < squared(radius)){
+                dest->pixels[x + y * dest->stride] = color_a; // TODO: Interpolate colors.
+            }
+        }
+    }
 }
 
 int main(){
@@ -483,10 +535,7 @@ int main(){
 
     DRM_State drm = {0};
     if(drm_init(&drm)){
-        int mouse_x = 0;
-        int mouse_y = 0;
-
-        u64 target_frame_time_ns = ns_from_sec(1.0f/60.0f);
+        /*u64 target_frame_time_ns = ns_from_sec(1.0f/60.0f);*/
         u64 prev_timestamp_ns = get_timestamp_ns();
 
         poll_fd_drm = &poll_fds[poll_fds_count++];
@@ -500,33 +549,64 @@ int main(){
             canvas[i] = blit_dest_from_drm_fb(&drm.framebuffers[i]);
         }
 
-        draw_gradiant(&canvas[0].canvas, 0.5f, 0.5f);
+        draw_gradiant((Blit_Canvas *)&canvas[0], 0.5f, 0.5f);
+
+        f32 screen_w = canvas[0].width;
+        f32 screen_h = canvas[0].height;
+        int mouse_x = screen_w*0.5f;
+        int mouse_y = screen_h*0.5f;
+
+        int score = 0;
+        Buffer temp = {g_temp_memory, Array_Len(g_temp_memory)};
+
+        Snake snake = {};
+        snake_add_part(&snake, v2(mouse_x, mouse_y), 0.035f*screen_h, 0xffff0000);
 
         while(true){
+            Buffer temp_restore = temp;
+
             if(poll(poll_fds, poll_fds_count, 0) < 0){
                 printf("Polling fds failed: %s. Aborting\n", strerror(errno));
                 break;
             }
 
             if(mouse_fd != -1 && poll_fd_mouse->revents & POLLIN){
-                printf("Before mouse read\n");
                 char buffer[1024];
                 // TODO: Handle interrupts
                 ssize_t bytes_read = read(mouse_fd, buffer, sizeof(buffer));
                 for(u32 i = 0; i < bytes_read; i += sizeof(3)){
                     Mouse_Event *evt = (Mouse_Event *)&buffer[i];
                     mouse_x += evt->data[1];
-                    mouse_y += evt->data[2];
+                    mouse_y -= evt->data[2];
                 }
-                printf("After mouse read\n");
             }
+
+            // Simulate the snake.
+            Ball *head = &snake.parts[0];
+            Vec2 snake_dir = v2_normalize(v2_sub(v2(mouse_x, mouse_y), head->p));
+            f32 snake_speed = 2.0f;
+            head->p = v2_add(head->p, v2_muls(snake_dir, snake_speed)); // TODO: Account for dt
 
             if(!drawn_backbuffer){
                 Blit_Dest *dest = &canvas[backbuffer_index];
-                f32 target_x = 0.5f + ((f32)mouse_x) / (f32)dest->canvas.width;
-                f32 target_y = 0.5f - ((f32)mouse_y) / (f32)dest->canvas.height;
-                draw_gradiant(&dest->canvas, target_x, target_y);
-                blit_text(dest, v3(200, 200, 0), font, str_lit("Hello, world!"));
+                f32 target_x = ((f32)mouse_x) / (f32)dest->width;
+                f32 target_y = ((f32)mouse_y) / (f32)dest->height;
+                draw_gradiant((Blit_Canvas *)dest, target_x, target_y);
+
+                f32 pad = 16;
+                Vec3 baseline = v3(pad, font->cap_height + pad, 0);
+                blit_text(dest, baseline, font, gen_string("Score: %d", &temp, score));
+
+                baseline.y += font->line_gap;
+                blit_text(dest, baseline, font, gen_string("Mouse: %d, %d", &temp, mouse_x, mouse_y));
+
+                Rect cursor = {v2(mouse_x, mouse_y), v2(20, 20)};
+                blit_rect(dest, cursor, 0, 0xff00ffff);
+
+                for_count(u32, i, snake.parts_count){
+                    Ball *part = &snake.parts[i];
+                    blit_gradient_ball(dest, part->p, part->radius, part->color, 0xff000000);
+                }
 
                 // Request a page flip event for when DRM has finished displaying the frontbuffer.
                 struct drm_mode_crtc_page_flip flip_req = {0};
@@ -575,6 +655,8 @@ int main(){
 
             prev_timestamp_ns = current_timestamp_ns;
 #endif
+
+            temp = temp_restore;
         }
     }
     drm_destroy(&drm);

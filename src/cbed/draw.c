@@ -36,14 +36,29 @@ static u32 blend_colors_premultiplied_alpha(u32 source, u32 dest){
     return result;
 }
 
+Cbed_API void blit_rect(Blit_Dest *dest, Rect r, f32 z, u32 color){
+    Vec2 r_min = rect_min(r);
+    Vec2 r_max = rect_max(r);
+
+    int min_x = MAX(r_min.x, 0.0f);
+    int min_y = MAX(r_min.y, 0.0f);
+    int max_x = MIN(r_max.x, dest->width);
+    int max_y = MIN(r_max.y, dest->height);
+
+    for_range(int, y, min_y, max_y){
+        for_range(int, x, min_x, max_x){
+            dest->pixels[x + y * dest->stride] = color;
+        }
+    }
+}
+
 Cbed_API void blit_sprite(Blit_Dest *dest, Blit_Canvas src, Vec3 top_left){
     int x = (int)top_left.x;
     int y = (int)top_left.y;
 
-    Blit_Canvas *target = &dest->canvas;
     for_count(int, sy, src.height){
         for_count(int, sx, src.width){
-            u32 *dest_color = &target->pixels[x + sx + (y + sy) * target->stride];
+            u32 *dest_color = &dest->pixels[x + sx + (y + sy) * dest->stride];
             u32 src_color = src.pixels[sx + sy * src.stride];
             u8 alpha = (src_color >> 24) & 0xff;
             // TODO: The blend is likely expensive, but is branching really going to make this
