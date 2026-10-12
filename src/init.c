@@ -103,10 +103,10 @@ static void draw_gradiant(Blit_Canvas *dest, f32 target_x, f32 target_y){
     u32 *pixels = dest->pixels;
     for_count(u32, y, dest->height){
         for_count(u32, x, dest->width){
-            f32 dx = aspect_ratio*((f32)x) / (f32)dest->width;
+            f32 dx = ((f32)x) / (f32)dest->width;
             f32 dy = ((f32)y) / (f32)dest->height;
 
-            f32 value = 1.0f-dist(dx - target_x, dy - target_y)*8.0f;
+            f32 value = 1.0f-dist(aspect_ratio*(dx - target_x), dy - target_y)*8.0f;
             u32 b = (u8)(value * 255.0f);
 
             u32 color = 0xff000000 | (b << 0);
@@ -614,8 +614,11 @@ int main(){
             // Simulate the snake.
             Ball *head = &snake.parts[0];
             Vec2 snake_dir = v2_normalize(v2_sub(v2(mouse_x, mouse_y), head->p));
-            f32 snake_speed = 32.0f*dt;
-            head->p = v2_add(head->p, v2_muls(snake_dir, snake_speed)); // TODO: Account for dt
+            f32 snake_speed = 32.0f;
+            Vec2 snake_accel = v2_muls(snake_dir, snake_speed*dt);
+            snake.vel = v2_add(snake.vel, snake_accel);
+            snake.vel = v2_sub(snake.vel, v2_muls(snake.vel, 0.05f)); // Estimate friction
+            head->p = v2_add(head->p, v2_muls(snake.vel, dt));
 
             if(!drawn_backbuffer){
                 Blit_Dest *dest = &canvas[backbuffer_index];
@@ -629,6 +632,9 @@ int main(){
 
                 baseline.y += font->line_gap;
                 blit_text(dest, baseline, font, gen_string("Mouse: %d, %d", &temp, mouse_x, mouse_y));
+
+                baseline.y += font->line_gap;
+                blit_text(dest, baseline, font, gen_string("dt: %.2f", &temp, dt));
 
                 Rect cursor = {v2(mouse_x, mouse_y), v2(20, 20)};
                 /*blit_rect(dest, cursor, 0, 0xff00ffff);*/
