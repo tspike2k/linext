@@ -483,6 +483,15 @@ typedef struct{
     Vec2 vel;
 } Snake;
 
+typedef struct{
+    Snake snake;
+    Font *font;
+    f32 screen_w;
+    f32 screen_h;
+    int score;
+    int high_score;
+} Game;
+
 static void snake_add_part(Snake *snake, Vec2 p, f32 radius, u32 color){
     assert(snake->parts_count <  Array_Len(snake->parts));
     Ball *part = &snake->parts[snake->parts_count++];
@@ -528,6 +537,51 @@ static void blit_gradient_ball(Blit_Dest *dest, Vec2 center, f32 radius, u32 col
     }
 }
 
+static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, f32 dt, Buffer *temp){
+    // Simulate the snake.
+    Snake *snake = &s->snake;
+
+    Ball *head = &snake->parts[0];
+    Vec2 snake_dir = v2_normalize(v2_sub(mouse, head->p));
+    f32 snake_speed = 0.1f*(f32)s->screen_w;
+    Vec2 snake_accel = v2_muls(snake_dir, snake_speed*dt);
+    snake->vel = v2_add(snake->vel, snake_accel);
+    snake->vel = v2_sub(snake->vel, v2_muls(snake->vel, 0.05f)); // Estimate friction
+    head->p = v2_add(head->p, v2_muls(snake->vel, dt));
+
+    // Render the game.
+    Font *font = s->font;
+
+    f32 target_x = ((f32)mouse.x) / (f32)dest->width;
+    f32 target_y = ((f32)mouse.y) / (f32)dest->height;
+    draw_gradiant((Blit_Canvas *)dest, target_x, target_y);
+
+    f32 pad = 16;
+    Vec3 baseline = v3(pad, font->cap_height + pad, 0);
+    blit_text(dest, baseline, font, gen_string("Score: %d", temp, s->score));
+
+    baseline.y += font->line_gap;
+    blit_text(dest, baseline, font, gen_string("Mouse: %d, %d", temp, mouse.x, mouse.y));
+
+    baseline.y += font->line_gap;
+    blit_text(dest, baseline, font, gen_string("dt: %.2f", temp, dt));
+
+    /*Rect cursor = {mouse, v2(20, 20)};*/
+    /*blit_rect(dest, cursor, 0, 0xff00ffff);*/
+
+    for_count(u32, i, snake->parts_count){
+        Ball *part = &snake->parts[i];
+        blit_gradient_ball(dest, part->p, part->radius, part->color, 0xff000000);
+    }
+}
+
+static void game_restart(Game *s){
+    s->score = 0;
+
+    Snake *snake = &s->snake;
+    snake_add_part(snake, v2(0.5f*s->screen_w, 0.5f*s->screen_h), 0.035f*s->screen_h, 0xffff0000);
+}
+
 int main(){
     // In order for the kernel to populate /dev with device files, we need to mount /dev as
     // a devtmpfs file system.
@@ -568,25 +622,23 @@ int main(){
         poll_fd_drm->fd     = drm.fd;
         poll_fd_drm->events = POLLIN;
 
-        bool drawn_backbuffer = false;
         u32 backbuffer_index = 1;
         Blit_Dest canvas[Framebuffers_Count];
         for_count(u32, i, Framebuffers_Count){
             canvas[i] = blit_dest_from_drm_fb(&drm.framebuffers[i]);
         }
 
-        draw_gradiant((Blit_Canvas *)&canvas[0], 0.5f, 0.5f);
+        Game game = {};
+        game.screen_w = canvas[0].width;
+        game.screen_h = canvas[0].height;
+        game.font = font;
+        game_restart(&game);
 
-        f32 screen_w = canvas[0].width;
-        f32 screen_h = canvas[0].height;
-        int mouse_x = screen_w*0.5f;
-        int mouse_y = screen_h*0.5f;
+        int mouse_x = game.screen_w*0.5f;
+        int mouse_y = game.screen_h*0.5f;
 
-        int score = 0;
+        bool requested_pageflip = false;
         Buffer temp = {g_temp_memory, Array_Len(g_temp_memory)};
-
-        Snake snake = {};
-        snake_add_part(&snake, v2(mouse_x, mouse_y), 0.035f*screen_h, 0xffff0000);
 
         while(true){
             Buffer temp_restore = temp;
@@ -611,39 +663,10 @@ int main(){
                 }
             }
 
-            // Simulate the snake.
-            Ball *head = &snake.parts[0];
-            Vec2 snake_dir = v2_normalize(v2_sub(v2(mouse_x, mouse_y), head->p));
-            f32 snake_speed = 32.0f;
-            Vec2 snake_accel = v2_muls(snake_dir, snake_speed*dt);
-            snake.vel = v2_add(snake.vel, snake_accel);
-            snake.vel = v2_sub(snake.vel, v2_muls(snake.vel, 0.05f)); // Estimate friction
-            head->p = v2_add(head->p, v2_muls(snake.vel, dt));
+            Blit_Dest *backbuffer = &canvas[backbuffer_index];
+            game_sim_and_draw(&game, backbuffer, v2(mouse_x, mouse_y), dt, &temp);
 
-            if(!drawn_backbuffer){
-                Blit_Dest *dest = &canvas[backbuffer_index];
-                f32 target_x = ((f32)mouse_x) / (f32)dest->width;
-                f32 target_y = ((f32)mouse_y) / (f32)dest->height;
-                draw_gradiant((Blit_Canvas *)dest, target_x, target_y);
-
-                f32 pad = 16;
-                Vec3 baseline = v3(pad, font->cap_height + pad, 0);
-                blit_text(dest, baseline, font, gen_string("Score: %d", &temp, score));
-
-                baseline.y += font->line_gap;
-                blit_text(dest, baseline, font, gen_string("Mouse: %d, %d", &temp, mouse_x, mouse_y));
-
-                baseline.y += font->line_gap;
-                blit_text(dest, baseline, font, gen_string("dt: %.2f", &temp, dt));
-
-                Rect cursor = {v2(mouse_x, mouse_y), v2(20, 20)};
-                /*blit_rect(dest, cursor, 0, 0xff00ffff);*/
-
-                for_count(u32, i, snake.parts_count){
-                    Ball *part = &snake.parts[i];
-                    blit_gradient_ball(dest, part->p, part->radius, part->color, 0xff000000);
-                }
-
+            if(!requested_pageflip){
                 // Request a page flip event for when DRM has finished displaying the frontbuffer.
                 struct drm_mode_crtc_page_flip flip_req = {0};
                 flip_req.fb_id = drm.framebuffers[backbuffer_index].fb_id;
@@ -654,8 +677,7 @@ int main(){
                     printf("Unable to request page flip: %s\n", strerror(errno));
                     break;
                 }
-
-                drawn_backbuffer = true;
+                requested_pageflip = true;
             }
 
             /*if(poll_fd_drm->revents & POLLIN)*/
@@ -673,24 +695,13 @@ int main(){
                     switch(evt->type){
                         case DRM_EVENT_FLIP_COMPLETE:{
                             backbuffer_index = (backbuffer_index + 1) % Framebuffers_Count;
-                            drawn_backbuffer = false;
+                            requested_pageflip = false;
                         } break;
                     }
 
                     i += evt->length;
                 }
             }
-#if 0
-
-            // Frame-rate limiter
-            u64 current_timestamp_ns = get_timestamp_ns();
-            u64 elasped_time_ns = current_timestamp_ns - prev_timestamp_ns;
-            if(elasped_time_ns < target_frame_time_ns){
-                sleep_ns(target_frame_time_ns - elasped_time_ns);
-            }
-
-            prev_timestamp_ns = current_timestamp_ns;
-#endif
 
             temp = temp_restore;
         }
