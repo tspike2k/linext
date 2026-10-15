@@ -7,6 +7,7 @@
 #include "cbed/common.h"
 #include "cbed/font.h"
 #include "cbed/files.h"
+#include "cbed/img.h"
 
 typedef struct{
     Vec2 p;
@@ -22,7 +23,9 @@ typedef struct{
 
 typedef struct{
     Buffer *memory;
+    Buffer *temp;
     Font   *font;
+    Blit_Canvas grass;
     Snake snake;
     f32 screen_w;
     f32 screen_h;
@@ -45,10 +48,21 @@ static void game_restart(Game *s){
     snake_add_part(snake, v2(0.5f*s->screen_w, 0.5f*s->screen_h), 0.035f*s->screen_h, 0xffff0000);
 }
 
-static bool game_init(Game *s, f32 screen_w, f32 screen_h, Buffer *memory){
+static Blit_Canvas pixels_to_canvas(Img_Pixels pixels){
+    Blit_Canvas result = {
+        pixels.data,
+        pixels.width,
+        pixels.height,
+        pixels.width
+    };
+    return result;
+}
+
+static bool game_init(Game *s, f32 screen_w, f32 screen_h, Buffer *memory, Buffer *temp){
     s->screen_w = screen_w;
     s->screen_h = screen_h;
     s->memory = memory;
+    s->temp  = temp;
 
     String font_data = file_read_into_memory("/font_en.fnt", memory);
     if(!font_data.size){
@@ -61,6 +75,14 @@ static bool game_init(Game *s, f32 screen_w, f32 screen_h, Buffer *memory){
     Font_Info *info = (Font_Info *)&font_base[font->font_info_offset];
     const char *font_name = (char *)(info+1);
     fmt_msg("Loaded font '{0}' at {1}px\n", fmt_cstr(font_name), fmt_i(info->height));
+
+    const char *grass_file_path = "/grass.tga";
+    String grass_data = file_read_into_memory(grass_file_path, temp);
+    Img_Pixels grass_pixels = img_load_tga_from_memory(grass_file_path, grass_data.text, grass_data.size, memory);
+    s->grass = pixels_to_canvas(grass_pixels);
+    if(!s->grass.pixels){
+        return false;
+    }
 
     game_restart(s);
 
@@ -147,8 +169,12 @@ static void blit_gradient_ball(Blit_Dest *dest, Vec2 center, f32 radius, u32 col
     }
 }
 
-static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, f32 dt, Buffer *temp){
+static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, f32 dt){
+    Buffer *temp = s->temp;
+
+    //
     // Simulate the snake.
+    //
     Snake *snake = &s->snake;
 
     Ball *head = &snake->parts[0];
@@ -159,28 +185,35 @@ static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, f32 dt, Buff
     snake->vel = v2_sub(snake->vel, v2_muls(snake->vel, 0.05f)); // Estimate friction
     head->p = v2_add(head->p, v2_muls(snake->vel, dt));
 
+    s->score++;
+
+    //
     // Render the game.
+    //
     Font *font = s->font;
 
     f32 target_x = ((f32)mouse.x) / (f32)dest->width;
     f32 target_y = ((f32)mouse.y) / (f32)dest->height;
+
     draw_gradiant((Blit_Canvas *)dest, target_x, target_y);
+    blit_sprite(dest, s->grass, v3(0, 0, 0));
+    /*blit_copy(dest, s->grass, v3(0, 0, 0));*/
 
     f32 pad = 16;
     Vec3 baseline = v3(pad, font->cap_height + pad, 0);
     blit_text(dest, baseline, font, gen_string("Score: %d", temp, s->score));
 
-    baseline.y += font->line_gap;
-    blit_text(dest, baseline, font, gen_string("Mouse: %d, %d", temp, mouse.x, mouse.y));
+    /*baseline.y += font->line_gap;*/
+    /*blit_text(dest, baseline, font, gen_string("Mouse: %d, %d", temp, (int)mouse.x, (int)mouse.y));*/
 
     baseline.y += font->line_gap;
     blit_text(dest, baseline, font, gen_string("dt: %.2f", temp, dt));
-
-    /*Rect cursor = {mouse, v2(20, 20)};*/
-    /*blit_rect(dest, cursor, 0, 0xff00ffff);*/
 
     for_count(u32, i, snake->parts_count){
         Ball *part = &snake->parts[i];
         blit_gradient_ball(dest, part->p, part->radius, part->color, 0xff000000);
     }
+
+    Rect cursor = {mouse, v2(20, 20)};
+    blit_rect(dest, cursor, 0, 0xff00ffff);
 }

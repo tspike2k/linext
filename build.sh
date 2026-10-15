@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build the userland for testing in a virtual machine.
-FLAGS="-static -g -DVM_Target"
+FLAGS="-static -O2 -DVM_Target"
 
 mkdir -p ./bin/rootfs
 gcc $FLAGS -o ./bin/rootfs/init src/init.c -I/usr/include/drm -lm

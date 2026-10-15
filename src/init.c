@@ -42,6 +42,7 @@ https://github.com/rockytriton/LLD/tree/main/linux_os
 #include "cbed/font.c"
 #include "cbed/draw.c"
 #include "cbed/files.c"
+#include "cbed/img.c"
 #include "super_snake.c"
 
 typedef struct{
@@ -87,8 +88,8 @@ enum{
 #define sec_from_ns(ns) (f32)(((f32)(ns))/1000000000.0f)
 #define free_if_nonzero(a) if((a)) free((a))
 
-u8 g_temp_memory[2*1024*1024];
-u8 g_main_memory[8*1024*1024];
+u8 g_temp_memory[8*1024*1024];
+u8 g_main_memory[12*1024*1024];
 
 static void print_dir(const char *dir_path){
     DIR *dir = opendir(dir_path);
@@ -450,7 +451,7 @@ int main(){
     DRM_State drm = {0};
     if(drm_init(&drm)){
         /*u64 target_frame_time_ns = ns_from_sec(1.0f/60.0f);*/
-        u64 prev_timestamp_ns = get_timestamp_ns();
+
 
         poll_fd_drm = &poll_fds[poll_fds_count++];
         poll_fd_drm->fd     = drm.fd;
@@ -471,13 +472,15 @@ int main(){
         Buffer temp = {g_temp_memory, Array_Len(g_temp_memory)};
 
         Game game = {};
-        bool running = game_init(&game, screen_w, screen_h, &memory);
+        bool running = game_init(&game, screen_w, screen_h, &memory, &temp);
         bool requested_pageflip = false;
+        temp.used = 0;
 
+        u64 prev_timestamp_ns = get_timestamp_ns();
+        u64 current_timestamp_ns = prev_timestamp_ns;
         while(running){
             Buffer temp_restore = temp;
 
-            u64 current_timestamp_ns = get_timestamp_ns();
             f32 dt = sec_from_ns(current_timestamp_ns - prev_timestamp_ns);
             prev_timestamp_ns = current_timestamp_ns;
 
@@ -500,8 +503,11 @@ int main(){
             // Sanity check. We need to be sure we don't send a second page flip request
             // before the first request is filled.
             if(!requested_pageflip){
+                current_timestamp_ns = get_timestamp_ns();
+                f32 dt = sec_from_ns(current_timestamp_ns - prev_timestamp_ns);
+
                 Blit_Dest *backbuffer = &canvas[backbuffer_index];
-                game_sim_and_draw(&game, backbuffer, v2(mouse_x, mouse_y), dt, &temp);
+                game_sim_and_draw(&game, backbuffer, v2(mouse_x, mouse_y), dt);
 
                 // Request a page flip event for when DRM has finished displaying the frontbuffer.
                 struct drm_mode_crtc_page_flip flip_req = {0};
@@ -514,13 +520,14 @@ int main(){
                     break;
                 }
                 requested_pageflip = true;
+                prev_timestamp_ns = current_timestamp_ns;
             }
 
-            /*if(poll_fd_drm->revents & POLLIN)*/
             // TODO: Here we're doing a blocking read so that we can wait until the page can be
             // flipped. This is pretty hacky, but it does mean we're not burning CPU time
             // in a busy loop waiting for this to occur. There is probably a much smarter way
             // to handle this.
+            /*if(poll_fd_drm->revents & POLLIN)*/
             {
                 char drm_buffer[1024];
                 // TODO: Handle interrupts
