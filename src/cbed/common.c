@@ -29,26 +29,35 @@ enum{
     Fmt_Type_Signed_Integer,
     Fmt_Type_C_String,
     Fmt_Type_Float,
+    Fmt_Type_Hex_Byte,
 };
 
 Cbed_API Fmt_Arg fmt_i(int64_t value){
     Fmt_Arg result = {0};
-    result.info = Fmt_Type_Signed_Integer;
+    result.type = Fmt_Type_Signed_Integer;
     result.data_int = value;
     return result;
 }
 
 Cbed_API Fmt_Arg fmt_f(float value){
     Fmt_Arg result = {0};
-    result.info = Fmt_Type_Float;
+    result.type = Fmt_Type_Float;
     result.data_float = value;
     return result;
 }
 
 Cbed_API Fmt_Arg fmt_cstr(const char *value){
     Fmt_Arg result = {0};
-    result.info = Fmt_Type_C_String;
+    result.type = Fmt_Type_C_String;
     result.data_cstr = value;
+    return result;
+}
+
+Cbed_API Fmt_Arg fmt_h(u8 *bytes, u32 count){
+    Fmt_Arg result = {0};
+    result.type = Fmt_Type_Hex_Byte;
+    result.data_pointer = bytes;
+    result.count = count;
     return result;
 }
 
@@ -111,26 +120,34 @@ static String fmt__s64(char *buffer, size_t buffer_length, int64_t n, uint32_t b
 static void fmt__arg(Fmt_Arg arg, Fmt_Put_Func put, void *dest){
     char temp_buffer[512];
     size_t buffer_size = Array_Len(temp_buffer);
-    String text = {0};
 
-    switch(arg.info){
+    switch(arg.type){
         default: assert(0); break;
 
         case Fmt_Type_Signed_Integer:{
-            text = fmt__s64(&temp_buffer[0], buffer_size, arg.data_int, 10);
+            String text = fmt__s64(&temp_buffer[0], buffer_size, arg.data_int, 10);
+            put(text.text, text.size, dest);
         } break;
 
         case Fmt_Type_Float:{
-            text = float_to_string(arg.data_float, 0, &temp_buffer[0], buffer_size);
+            String text = float_to_string(arg.data_float, 0, &temp_buffer[0], buffer_size);
+            put(text.text, text.size, dest);
         } break;
 
         case Fmt_Type_C_String:{
             const char* s = arg.data_cstr;
-            text = (String){(char*)s, !s ? 0 : strlen(s)};
+            String text = (String){(char*)s, !s ? 0 : strlen(s)};
+            put(text.text, text.size, dest);
+        } break;
+
+        case Fmt_Type_Hex_Byte:{
+            for_count(u32, i, arg.count){
+                u8 *data = (u8 *)arg.data_pointer;
+                String text = fmt__s64(&temp_buffer[0], buffer_size, data[i], 16);
+                put(text.text, text.size, dest);
+            }
         } break;
     }
-
-    put(text.text, text.size, dest);
 }
 
 Cbed_API size_t buffer_frame_begin(Buffer *buffer){

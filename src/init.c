@@ -453,6 +453,7 @@ static Blit_Dest blit_dest_from_drm_fb(DRM_Framebuffer *framebuffer){
 }
 
 u8 g_temp_memory[2*1024*1024];
+u8 g_main_memory[8*1024*1024];
 
 static String gen_string(const char *fmt, Buffer *buffer, ...){
     String result = {&buffer->data[buffer->used], 0};

@@ -10,6 +10,8 @@ mkdir -p ./bin/rootfs/dev
 mkdir -p ./bin/rootfs/proc
 mkdir -p ./bin/rootfs/sys
 
+cp ./data/grass.tga ./bin/rootfs
+
 # Gather all the files and directories listed in ./bin/rootfs and then convert them into a
 # cpio archive, which we compress using gzip.
 cd ./bin/rootfs

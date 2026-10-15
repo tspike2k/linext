@@ -157,14 +157,17 @@ Cbed_API String uint_to_string(u64 n, u32 base, char* buffer, size_t buffer_size
 Cbed_API String float_to_string(f32 f, u32 precision, char *buffer, size_t buffer_size);
 
 typedef struct{
-    uint32_t info; // TODO: This should contain both the arg type and an array count. Array count is limited!
+    // TODO: We probably want more control features, like precision. Keep it compact.
+    // Type and array count could easily be rolled into a single u32.
     union{
-        int64_t     data_int;
-        uint64_t    data_uint;
-        float       data_float;
+        s64         data_int;
+        u64         data_uint;
+        f32         data_float;
         const char *data_cstr;
         void       *data_pointer;
     };
+    u32   type;
+    u32   count; // Used for arrays
 } Fmt_Arg;
 
 // NOTE: The macros fmt_buffer and fmt_out both expand to a scoped code block. As such,
@@ -194,6 +197,7 @@ typedef void (*Fmt_Put_Func)(const char *text, size_t text_count, void *user_dat
 Cbed_API Fmt_Arg fmt_i(int64_t value);
 Cbed_API Fmt_Arg fmt_cstr(const char *s);
 Cbed_API Fmt_Arg fmt_f(float value);
+Cbed_API Fmt_Arg fmt_h(u8 *bytes, u32 count); // Lowercase hex
 
 Cbed_API void fmt_msg_set_dest(Fmt_Put_Func put, void *user_data);
 Cbed_API void fmt_msg_put(const char* msg, size_t msg_length);
