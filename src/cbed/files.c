@@ -266,6 +266,7 @@ Cbed_API bool file_exists(const char *file_path){
     return result;
 }
 
+#if 0
 typedef struct{
     u32 flags;
     void *lib;
@@ -303,6 +304,7 @@ Cbed_API void file_close_lib(File_Lib *lib){
     s->lib = NULL;
     s->flags = 0;
 }
+#endif
 
 typedef struct {
     DIR           *info;

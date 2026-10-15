@@ -19,7 +19,6 @@ https://www.youtube.com/watch?v=wjnLBjLM2QQ
 https://github.com/rockytriton/LLD/tree/main/linux_os
 */
 
-
 #include <stdio.h>
 #include <stdarg.h> // va_start, va_end
 #include <fcntl.h>
@@ -39,15 +38,57 @@ https://github.com/rockytriton/LLD/tree/main/linux_os
 #include <poll.h>
 #include "cbed/common.c"
 #include "cbed/math.c"
-#include "assets.c"
+/*#include "assets.c"*/
 #include "cbed/font.c"
 #include "cbed/draw.c"
+#include "cbed/files.c"
+#include "super_snake.c"
 
-typedef int8_t   s8;
-typedef uint8_t  u8;
-typedef uint32_t u32;
-typedef uint64_t u64;
-typedef float    f32;
+typedef struct{
+    u32 *data;
+    u32  width;
+    u32  height;
+    u32  stride;
+    u32  handle;
+    u32  fb_id;
+    u32  total_bytes;
+} DRM_Framebuffer;
+
+#define Framebuffers_Count 2 // Double buffering
+
+typedef struct {
+    int fd;
+    struct drm_mode_card_res card_resources;
+    DRM_Framebuffer framebuffers[Framebuffers_Count];
+    u32 crtc_id;
+} DRM_State;
+
+typedef struct{
+    s8 data[3];
+} Mouse_Event;
+
+// DRM mode states from here:
+// https://www.youtube.com/watch?v=86tz5m0hy9M
+enum{
+    DRM_Mode_Connected    = 1,
+    DRM_Mode_Disconnected = 2,
+    DRM_Mode_Unknown      = 3,
+};
+
+enum{
+    Poll_FD_Index_Mouse,
+    Poll_FD_Index_DRM,
+    Poll_FD_Index_Total,
+};
+
+#define IOCTL_ERROR -1
+
+#define ns_from_sec(seconds) (u64)(((f32)(seconds))*1000000000.0f)
+#define sec_from_ns(ns) (f32)(((f32)(ns))/1000000000.0f)
+#define free_if_nonzero(a) if((a)) free((a))
+
+u8 g_temp_memory[2*1024*1024];
+u8 g_main_memory[8*1024*1024];
 
 static void print_dir(const char *dir_path){
     DIR *dir = opendir(dir_path);
@@ -63,16 +104,6 @@ static void print_dir(const char *dir_path){
     }
 }
 
-#define ns_from_sec(seconds) (u64)(((f32)(seconds))*1000000000.0f)
-#define sec_from_ns(ns) (f32)(((f32)(ns))/1000000000.0f)
-
-#define free_if_nonzero(a) if((a)) free((a))
-
-static f32 dist(f32 x, f32 y){
-    f32 result = sqrt(x*x + y*y);
-    return result;
-}
-
 static void sleep_ns(u64 nanoseconds){
     if(nanoseconds > 0){
         struct timespec ts;
@@ -86,47 +117,6 @@ static void sleep_ns(u64 nanoseconds){
     }
 }
 
-typedef struct{
-    u32 *data;
-    u32  width;
-    u32  height;
-    u32  stride;
-    u32  handle;
-    u32  fb_id;
-    u32  total_bytes;
-} DRM_Framebuffer;
-
-static void draw_gradiant(Blit_Canvas *dest, f32 target_x, f32 target_y){
-    f32 aspect_ratio = (f32)dest->width / (f32)dest->height;
-
-    u32 line_advance = dest->stride - dest->width;
-    u32 *pixels = dest->pixels;
-    for_count(u32, y, dest->height){
-        for_count(u32, x, dest->width){
-            f32 dx = ((f32)x) / (f32)dest->width;
-            f32 dy = ((f32)y) / (f32)dest->height;
-
-            f32 value = 1.0f-dist(aspect_ratio*(dx - target_x), dy - target_y)*8.0f;
-            u32 b = (u8)(value * 255.0f);
-
-            u32 color = 0xff000000 | (b << 0);
-            *pixels = color;
-            pixels++;
-        }
-        pixels += line_advance;
-    }
-}
-
-// Double buffering
-#define Framebuffers_Count 2
-
-typedef struct {
-    int fd;
-    struct drm_mode_card_res card_resources;
-    DRM_Framebuffer framebuffers[Framebuffers_Count];
-    u32 crtc_id;
-} DRM_State;
-
 static u64 maybe_alloc_drm_ptr(u32 count, u32 size){
     u64 result = 0;
     if(count){
@@ -134,16 +124,6 @@ static u64 maybe_alloc_drm_ptr(u32 count, u32 size){
     }
     return result;
 }
-
-#define IOCTL_ERROR -1
-
-// DRM mode states from here:
-// https://www.youtube.com/watch?v=86tz5m0hy9M
-enum{
-    DRM_Mode_Connected    = 1,
-    DRM_Mode_Disconnected = 2,
-    DRM_Mode_Unknown      = 3,
-};
 
 static void drm_free_connector(struct drm_mode_get_connector *connector){
     if(connector->encoders_ptr)    free((void *)connector->encoders_ptr);
@@ -431,16 +411,6 @@ static void drm_destroy(DRM_State *drm){
 	free_if_nonzero((void*)drm->card_resources.encoder_id_ptr);
 }
 
-typedef struct{
-    s8 data[3];
-} Mouse_Event;
-
-enum{
-    Poll_FD_Index_Mouse,
-    Poll_FD_Index_DRM,
-    Poll_FD_Index_Total,
-};
-
 static Blit_Dest blit_dest_from_drm_fb(DRM_Framebuffer *framebuffer){
     Blit_Dest result = {0};
 
@@ -450,137 +420,6 @@ static Blit_Dest blit_dest_from_drm_fb(DRM_Framebuffer *framebuffer){
     result.stride = framebuffer->stride;
 
     return result;
-}
-
-u8 g_temp_memory[2*1024*1024];
-u8 g_main_memory[8*1024*1024];
-
-static String gen_string(const char *fmt, Buffer *buffer, ...){
-    String result = {&buffer->data[buffer->used], 0};
-
-    // When in Rome...
-    va_list args;
-    va_start(args, buffer);
-    int bytes = vsnprintf(result.text, buffer->size - buffer->used, fmt, args);
-    va_end(args);
-
-    if(bytes != -1){
-        result.size = bytes;
-        buffer->used += bytes + 1; // Include the null-terminator
-    }
-
-    return result;
-}
-
-typedef struct{
-    Vec2 p;
-    f32  radius;
-    u32  color;
-} Ball;
-
-typedef struct{
-    u32  parts_count;
-    Ball parts[256];
-    Vec2 vel;
-} Snake;
-
-typedef struct{
-    Snake snake;
-    Font *font;
-    f32 screen_w;
-    f32 screen_h;
-    int score;
-    int high_score;
-} Game;
-
-static void snake_add_part(Snake *snake, Vec2 p, f32 radius, u32 color){
-    assert(snake->parts_count <  Array_Len(snake->parts));
-    Ball *part = &snake->parts[snake->parts_count++];
-    part->p      = p;
-    part->radius = radius;
-    part->color  = color;
-}
-
-static u32 lerp_colors(u32 a, u32 b, f32 t){
-    // TODO: This should probably be done in linear RGB-space.
-    Vec4 av = v4(
-        ((a >> 16) & 0xff), ((a >>  8) & 0xff),
-        ((a >>  0) & 0xff), ((a >> 24) & 0xff)
-    );
-
-    Vec4 bv = v4(
-        ((b >> 16) & 0xff), ((b >>  8) & 0xff),
-        ((b >>  0) & 0xff), ((b >> 24) & 0xff)
-    );
-
-    Vec4 v = v4_lerp(av, bv, t);
-    u32 result = ((u32)v.a) << 24 | ((u32)v.r) << 16
-               | ((u32)v.g) <<  8 | ((u32)v.b) <<  0;
-    return result;
-}
-
-static void blit_gradient_ball(Blit_Dest *dest, Vec2 center, f32 radius, u32 color_a, u32 color_b){
-    int min_x = MAX(center.x - radius, 0.0f);
-    int min_y = MAX(center.y - radius, 0.0f);
-    int max_x = MIN(center.x + radius, (f32)dest->width);
-    int max_y = MIN(center.y + radius, (f32)dest->height);
-
-    for_range(int, y, min_y, max_y){
-        for_range(int, x, min_x, max_x){
-            Vec2 p = v2(x, y);
-            if(v2_dist_sq(center, p) < squared(radius)){
-                // TODO: Is there a way to interpolate the colors without using a sqrt?
-                f32 t = v2_dist(center, p) / radius;
-                u32 color = lerp_colors(color_a, color_b, t);
-                dest->pixels[x + y * dest->stride] = color;
-            }
-        }
-    }
-}
-
-static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, f32 dt, Buffer *temp){
-    // Simulate the snake.
-    Snake *snake = &s->snake;
-
-    Ball *head = &snake->parts[0];
-    Vec2 snake_dir = v2_normalize(v2_sub(mouse, head->p));
-    f32 snake_speed = 0.1f*(f32)s->screen_w;
-    Vec2 snake_accel = v2_muls(snake_dir, snake_speed*dt);
-    snake->vel = v2_add(snake->vel, snake_accel);
-    snake->vel = v2_sub(snake->vel, v2_muls(snake->vel, 0.05f)); // Estimate friction
-    head->p = v2_add(head->p, v2_muls(snake->vel, dt));
-
-    // Render the game.
-    Font *font = s->font;
-
-    f32 target_x = ((f32)mouse.x) / (f32)dest->width;
-    f32 target_y = ((f32)mouse.y) / (f32)dest->height;
-    draw_gradiant((Blit_Canvas *)dest, target_x, target_y);
-
-    f32 pad = 16;
-    Vec3 baseline = v3(pad, font->cap_height + pad, 0);
-    blit_text(dest, baseline, font, gen_string("Score: %d", temp, s->score));
-
-    baseline.y += font->line_gap;
-    blit_text(dest, baseline, font, gen_string("Mouse: %d, %d", temp, mouse.x, mouse.y));
-
-    baseline.y += font->line_gap;
-    blit_text(dest, baseline, font, gen_string("dt: %.2f", temp, dt));
-
-    /*Rect cursor = {mouse, v2(20, 20)};*/
-    /*blit_rect(dest, cursor, 0, 0xff00ffff);*/
-
-    for_count(u32, i, snake->parts_count){
-        Ball *part = &snake->parts[i];
-        blit_gradient_ball(dest, part->p, part->radius, part->color, 0xff000000);
-    }
-}
-
-static void game_restart(Game *s){
-    s->score = 0;
-
-    Snake *snake = &s->snake;
-    snake_add_part(snake, v2(0.5f*s->screen_w, 0.5f*s->screen_h), 0.035f*s->screen_h, 0xffff0000);
 }
 
 int main(){
@@ -608,12 +447,6 @@ int main(){
         poll_fd_mouse->events = POLLIN;
     }
 
-    Font *font = (Font *)font_en;
-    u8 *font_base = (u8 *)font;
-    Font_Info *info = (Font_Info *)&font_base[font->font_info_offset];
-    const char *font_name = (char *)(info+1);
-    fmt_msg("Loaded font '{0}' at {1}px\n", fmt_cstr(font_name), fmt_i(info->height));
-
     DRM_State drm = {0};
     if(drm_init(&drm)){
         /*u64 target_frame_time_ns = ns_from_sec(1.0f/60.0f);*/
@@ -629,19 +462,19 @@ int main(){
             canvas[i] = blit_dest_from_drm_fb(&drm.framebuffers[i]);
         }
 
-        Game game = {};
-        game.screen_w = canvas[0].width;
-        game.screen_h = canvas[0].height;
-        game.font = font;
-        game_restart(&game);
+        f32 screen_w = canvas[0].width;
+        f32 screen_h = canvas[0].height;
+        int mouse_x = 0.5f*screen_w;
+        int mouse_y = 0.5f*screen_h;
 
-        int mouse_x = game.screen_w*0.5f;
-        int mouse_y = game.screen_h*0.5f;
-
-        bool requested_pageflip = false;
+        Buffer memory = {g_main_memory, Array_Len(g_main_memory)};
         Buffer temp = {g_temp_memory, Array_Len(g_temp_memory)};
 
-        while(true){
+        Game game = {};
+        bool running = game_init(&game, screen_w, screen_h, &memory);
+        bool requested_pageflip = false;
+
+        while(running){
             Buffer temp_restore = temp;
 
             u64 current_timestamp_ns = get_timestamp_ns();
