@@ -86,7 +86,7 @@ int main(){
             fclose(f);
         }
         else{
-            printf("Unable to open file %s: %s\n", file_path, strerror(errno));
+            printf("Unable to open file %s: %s\n", file_path.text, strerror(errno));
         }
         memory = memory_restore;
     }

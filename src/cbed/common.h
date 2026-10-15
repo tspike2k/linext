@@ -136,10 +136,10 @@ Cbed_API void *buffer_read(Buffer *buffer, size_t bytes);
 Cbed_API Buffer buffer_begin_writer(Buffer *buffer);
 Cbed_API String buffer_end_writer(Buffer *buffer, Buffer writer, bool null_terminate);
 
-// NOTE: The buffer_put_text function truncates the result if no more roo exists in the buffer.
+// NOTE: The buffer_put_string function truncates the result if no more room exists in the buffer.
 // When concatonating strings, calling buffer_null_terminate will ensure the text is null
 // terminated, even if the string had been truncated.
-Cbed_API char *buffer_put_text(Buffer *buffer, const char *text, size_t text_len);
+Cbed_API char *buffer_put_string(Buffer *buffer, String s);
 Cbed_API char *buffer_null_terminate(Buffer* buffer);
 
 // Conversion functions

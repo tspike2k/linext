@@ -55,7 +55,7 @@ typedef union{
 } Vec4;
 
 #define v2(x, y) (Vec2){(f32)(x), (f32)(y)}
-#define v3(x, y, z) (Vec3){(f32)(x), (f32)(y), (f32)(z)}
+#define v3(x, y, z) (Vec3){{(f32)(x), (f32)(y), (f32)(z)}}
 #define v4(x, y, z, w) (Vec4){{(f32)(x), (f32)(y), (f32)(z), (f32)(w)}}
 
 #define v2_xyz(v) (Vec3){v.x, v.y, 0}
@@ -132,6 +132,7 @@ Cbed_API Mat4 mat4_translate(Vec3 offset);
     {0, 0, 0, 1},               \
 }})
 
+Cbed_API f32 clampf(f32 value, f32 min_val, f32 max_val);
 Cbed_API f32 lerp(f32 a, f32 b, f32 t);
 Cbed_API u32 premultiply_alpha(u32 c);
 Cbed_API u64 round_up_power_of_two(u64 n);

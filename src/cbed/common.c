@@ -203,12 +203,12 @@ Cbed_API String buffer_end_writer(Buffer *buffer, Buffer writer, bool null_termi
     return result;
 }
 
-Cbed_API char *buffer_put_text(Buffer *buffer, const char* text, size_t text_len){
+Cbed_API char *buffer_put_string(Buffer *buffer, String str){
     char *result = (char *)&buffer->data[buffer->used];
-    if(text_len){
+    if(str.size){
         size_t availible = buffer->size - buffer->used;
-        size_t to_copy = text_len < availible ? text_len : availible;
-        memcpy(&buffer->data[buffer->used], text, to_copy);
+        size_t to_copy = str.size < availible ? str.size : availible;
+        memcpy(&buffer->data[buffer->used], str.text, to_copy);
         buffer->used += to_copy;
     }
     return result;

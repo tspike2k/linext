@@ -663,10 +663,12 @@ int main(){
                 }
             }
 
-            Blit_Dest *backbuffer = &canvas[backbuffer_index];
-            game_sim_and_draw(&game, backbuffer, v2(mouse_x, mouse_y), dt, &temp);
-
+            // Sanity check. We need to be sure we don't send a second page flip request
+            // before the first request is filled.
             if(!requested_pageflip){
+                Blit_Dest *backbuffer = &canvas[backbuffer_index];
+                game_sim_and_draw(&game, backbuffer, v2(mouse_x, mouse_y), dt, &temp);
+
                 // Request a page flip event for when DRM has finished displaying the frontbuffer.
                 struct drm_mode_crtc_page_flip flip_req = {0};
                 flip_req.fb_id = drm.framebuffers[backbuffer_index].fb_id;
