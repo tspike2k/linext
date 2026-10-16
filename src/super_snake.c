@@ -169,6 +169,36 @@ static void blit_gradient_ball(Blit_Dest *dest, Vec2 center, f32 radius, u32 col
     }
 }
 
+static void blit_background(Blit_Dest *img_dest, Blit_Canvas img_src){
+    u32 *dest = img_dest->pixels;
+    u32 *src  = img_src.pixels;
+
+    u32 width  = MIN(img_src.width, img_dest->width);
+    u32 height = MIN(img_src.height, img_dest->height);
+    u32 src_stride  = img_src.stride;
+    u32 dest_stride = img_dest->stride;
+
+#if 1
+    // TODO: Why doesn't this work? It causes a segfault.
+    for_count(u32, y, height){
+        for_count(u32, x, width){
+            dest[x + y * dest_stride] = src[x + y * src_stride];
+        }
+    }
+#else
+    // TODO: Why doesn't this work? It causes a segfault.
+    for_count(u32, y, height){
+        for_count(u32, x, width){
+            *dest = *src;
+            dest++;
+            src++;
+        }
+        src  += src_stride;
+        dest += dest_stride;
+    }
+#endif
+}
+
 static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, f32 dt){
     Buffer *temp = s->temp;
 
@@ -195,9 +225,10 @@ static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, f32 dt){
     f32 target_x = ((f32)mouse.x) / (f32)dest->width;
     f32 target_y = ((f32)mouse.y) / (f32)dest->height;
 
-    draw_gradiant((Blit_Canvas *)dest, target_x, target_y);
-    blit_sprite(dest, s->grass, v3(0, 0, 0));
+    /*draw_gradiant((Blit_Canvas *)dest, target_x, target_y);*/
+    /*blit_sprite(dest, s->grass, v3(0, 0, 0));*/
     /*blit_copy(dest, s->grass, v3(0, 0, 0));*/
+    blit_background(dest, s->grass);
 
     f32 pad = 16;
     Vec3 baseline = v3(pad, font->cap_height + pad, 0);
@@ -207,7 +238,7 @@ static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, f32 dt){
     /*blit_text(dest, baseline, font, gen_string("Mouse: %d, %d", temp, (int)mouse.x, (int)mouse.y));*/
 
     baseline.y += font->line_gap;
-    blit_text(dest, baseline, font, gen_string("dt: %.2f", temp, dt));
+    blit_text(dest, baseline, font, gen_string("dt: %.3f", temp, dt));
 
     for_count(u32, i, snake->parts_count){
         Ball *part = &snake->parts[i];

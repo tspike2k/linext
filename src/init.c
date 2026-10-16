@@ -151,7 +151,7 @@ static bool drm_init(DRM_State *s){
         return false;
     }
 
-    // Check to make sure the drm device support dumb buffers.
+    // Check to make sure the DRM device support dumb buffers.
     // Thanks to "OS development using the Linux kernel - DRM/KMS Video Modes (Part 9)"
     // by Low Level Devel (https://www.youtube.com/watch?v=86tz5m0hy9M)
     u64 drm_caps[2] = {DRM_CAP_DUMB_BUFFER, 0};
@@ -184,16 +184,16 @@ static bool drm_init(DRM_State *s){
     struct drm_mode_card_res *cr = &s->card_resources;
     printf("%u connectors found for device %s\n", cr->count_connectors, device_path);
     if(cr->count_connectors < 1){
-        printf("No connectors found for device %s\n", device_path);
+        printf("No connectors found for device %s. Aborting.\n", device_path);
         return false;
     }
 
     // Allocate space for each resource ID.
     // TODO: Use something other than malloc?
-    cr->fb_id_ptr        = maybe_alloc_drm_ptr(cr->count_fbs, sizeof(u64));
-    cr->crtc_id_ptr      = maybe_alloc_drm_ptr(cr->count_crtcs, sizeof(u64));
-    cr->connector_id_ptr = maybe_alloc_drm_ptr(cr->count_connectors, sizeof(u64));
-    cr->encoder_id_ptr   = maybe_alloc_drm_ptr(cr->count_encoders, sizeof(u64));
+    cr->fb_id_ptr        = maybe_alloc_drm_ptr(cr->count_fbs, sizeof(u32));
+    cr->crtc_id_ptr      = maybe_alloc_drm_ptr(cr->count_crtcs, sizeof(u32));
+    cr->connector_id_ptr = maybe_alloc_drm_ptr(cr->count_connectors, sizeof(u32));
+    cr->encoder_id_ptr   = maybe_alloc_drm_ptr(cr->count_encoders, sizeof(u32));
 
     // Request the ids for each card resource now that we have allocated space for them.
     if(ioctl(s->fd, DRM_IOCTL_MODE_GETRESOURCES, cr) == IOCTL_ERROR){
@@ -203,9 +203,9 @@ static bool drm_init(DRM_State *s){
 
     // Loop through each physical connection on the graphics card.
     bool dumb_buffer_success = false;
+    u32 *connector_ids = (u32 *)cr->connector_id_ptr;
     for_count(u32, connector_index, cr->count_connectors){
-        u64 *connector_ids = (u64 *)cr->connector_id_ptr;
-        u64 connector_id = connector_ids[connector_index];
+        u32 connector_id = connector_ids[connector_index];
 
         printf("Testing connector %u (id %u)...\n", connector_index, connector_id);
 
@@ -228,9 +228,9 @@ static bool drm_init(DRM_State *s){
             continue;
         }
 
-        connector.encoders_ptr    = maybe_alloc_drm_ptr(connector.count_encoders, sizeof(u64));
+        connector.encoders_ptr    = maybe_alloc_drm_ptr(connector.count_encoders, sizeof(u32));
         connector.modes_ptr       = maybe_alloc_drm_ptr(connector.count_modes, sizeof(struct drm_mode_modeinfo));
-        connector.props_ptr       = maybe_alloc_drm_ptr(connector.count_props, sizeof(u64));
+        connector.props_ptr       = maybe_alloc_drm_ptr(connector.count_props, sizeof(u32));
         connector.prop_values_ptr = maybe_alloc_drm_ptr(connector.count_props, sizeof(u64));
 
         // Get the resources for the connection
@@ -451,8 +451,6 @@ int main(){
     DRM_State drm = {0};
     if(drm_init(&drm)){
         /*u64 target_frame_time_ns = ns_from_sec(1.0f/60.0f);*/
-
-
         poll_fd_drm = &poll_fds[poll_fds_count++];
         poll_fd_drm->fd     = drm.fd;
         poll_fd_drm->events = POLLIN;
@@ -476,18 +474,17 @@ int main(){
         bool requested_pageflip = false;
         temp.used = 0;
 
-        u64 prev_timestamp_ns = get_timestamp_ns();
-        u64 current_timestamp_ns = prev_timestamp_ns;
+        f32 dt = 0;
         while(running){
-            Buffer temp_restore = temp;
+            u64 frame_start_ns = get_timestamp_ns();
 
-            f32 dt = sec_from_ns(current_timestamp_ns - prev_timestamp_ns);
-            prev_timestamp_ns = current_timestamp_ns;
+            Buffer temp_restore = temp;
 
             if(poll(poll_fds, poll_fds_count, 0) < 0){
                 printf("Polling fds failed: %s. Aborting\n", strerror(errno));
                 break;
             }
+            assert(poll_fd_drm->events = POLLIN);
 
             if(mouse_fd != -1 && poll_fd_mouse->revents & POLLIN){
                 char buffer[1024];
@@ -503,12 +500,11 @@ int main(){
             // Sanity check. We need to be sure we don't send a second page flip request
             // before the first request is filled.
             if(!requested_pageflip){
-                current_timestamp_ns = get_timestamp_ns();
-                f32 dt = sec_from_ns(current_timestamp_ns - prev_timestamp_ns);
-
                 Blit_Dest *backbuffer = &canvas[backbuffer_index];
+                /*assert(dt > 0);*/
                 game_sim_and_draw(&game, backbuffer, v2(mouse_x, mouse_y), dt);
 
+#if 1
                 // Request a page flip event for when DRM has finished displaying the frontbuffer.
                 struct drm_mode_crtc_page_flip flip_req = {0};
                 flip_req.fb_id = drm.framebuffers[backbuffer_index].fb_id;
@@ -520,18 +516,23 @@ int main(){
                     break;
                 }
                 requested_pageflip = true;
-                prev_timestamp_ns = current_timestamp_ns;
+#endif
             }
 
+#if 1
             // TODO: Here we're doing a blocking read so that we can wait until the page can be
             // flipped. This is pretty hacky, but it does mean we're not burning CPU time
             // in a busy loop waiting for this to occur. There is probably a much smarter way
             // to handle this.
-            /*if(poll_fd_drm->revents & POLLIN)*/
+            if(poll_fd_drm->revents & POLLIN)
             {
+                u32 flips_count = 0;
                 char drm_buffer[1024];
                 // TODO: Handle interrupts
                 ssize_t bytes_read = read(drm.fd, drm_buffer, sizeof(drm_buffer));
+                if(bytes_read < 0){
+                    printf("Read error: %s\n", strerror(errno));
+                }
                 for(u32 i = 0; i < bytes_read;){
                     struct drm_event *evt = (struct drm_event *)&drm_buffer[i];
 
@@ -539,14 +540,19 @@ int main(){
                         case DRM_EVENT_FLIP_COMPLETE:{
                             backbuffer_index = (backbuffer_index + 1) % Framebuffers_Count;
                             requested_pageflip = false;
+                            flips_count++;
                         } break;
                     }
 
                     i += evt->length;
                 }
+                assert(flips_count == 1);
             }
+#endif
 
             temp = temp_restore;
+            u64 frame_end_ns = get_timestamp_ns();
+            dt = sec_from_ns(frame_end_ns - frame_start_ns);
         }
     }
     drm_destroy(&drm);
