@@ -34,9 +34,7 @@ Please note, Qemu doesn't seem to properly handle Vsync page flip requests. This
 
 ## License
 
-The majority of this project's source code is shared under the zlib license. See accompanying [license file](https://github.com/tspike2k/linext/blob/main/LICENSE.txt). All code under the
-
-All dependencies are under their own specific licenses.
+This project's source code is shared under the zlib license. See accompanying [license file](https://github.com/tspike2k/linext/blob/main/LICENSE.txt). Project dependencies are under their own individual licenses.
 
 ## Special Thanks
 
