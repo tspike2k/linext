@@ -34,6 +34,7 @@ https://github.com/rockytriton/LLD/tree/main/linux_os
 #include <stdbool.h>
 #include <drm/drm.h>
 #include <drm/drm_mode.h>
+#include <drm/drm_fourcc.h>
 #include <stdlib.h> // malloc,free
 #include <poll.h>
 #include "cbed/common.c"
@@ -300,7 +301,25 @@ static bool drm_init(DRM_State *s){
                 break;
             }
 
+            //
             // Try to add the dumb buffer
+            //
+            // Our colors are in the form of 0xAABBGGRR. Both Qemu and tested hardware
+            // don't default to using format for their framebuffers. To fix that we
+            // would need to swizzle the bits, but we don't know the destination format.
+            //
+            // A modern and easier way is to request a specific destination format.
+            // However, this requires support at the hardware (or maybe driver?) level.
+            // It can be done on my laptop, but doesn't work on Qemu.
+            //
+            // TODO: We should have a fallback just in case DRM_IOCTL_MODE_ADDFB2 fails
+            // to request the right target format. The colors would turn out wrong, but
+            // better that than nothing.
+            // TODO: Also, find out how devs usually deal with the issue of DRM/KMS
+            // not supporting the desired format. Are there ways to query that information?
+            // This needs a LOT more work.
+            //
+#if VM_Target
             struct drm_mode_fb_cmd fb_dumb = {0};
             fb_dumb.handle = create_dumb.handle;
             fb_dumb.width  = create_dumb.width;
@@ -308,11 +327,25 @@ static bool drm_init(DRM_State *s){
             fb_dumb.bpp    = create_dumb.bpp;
             fb_dumb.pitch  = create_dumb.pitch;
             fb_dumb.depth  = 24;
+
             if(ioctl(s->fd, DRM_IOCTL_MODE_ADDFB, &fb_dumb) == IOCTL_ERROR){
                 printf("Unable to add framebuffer: %s. Skipping.\n", strerror(errno));
                 framebuffer_error = true;
                 break;
             }
+#else
+            struct drm_mode_fb_cmd2 fb_dumb = {0};
+            fb_dumb.width  = create_dumb.width;
+            fb_dumb.height = create_dumb.height;
+            fb_dumb.handles[0] = create_dumb.handle;
+            fb_dumb.pitches[0] = create_dumb.pitch;
+            fb_dumb.pixel_format = DRM_FORMAT_XBGR8888;
+            if(ioctl(s->fd, DRM_IOCTL_MODE_ADDFB2, &fb_dumb) == IOCTL_ERROR){
+                printf("Unable to add framebuffer: %s. Skipping.\n", strerror(errno));
+                framebuffer_error = true;
+                break;
+            }
+#endif
 
             // Try to map the dumb buffer.
             struct drm_mode_map_dumb map_dumb = {0};
@@ -508,14 +541,19 @@ int main(){
                 Blit_Dest *backbuffer = &canvas[backbuffer_index];
                 game_sim_and_draw(&game, backbuffer, v2(mouse_x, mouse_y), dt);
 
-                // Swap all the pixels from RGBA (our byte order) to BGRA
-                // TODO: Does DRM/KMS guarantee a BGRA surface?
+                // We can't configure the color format of the framebuffers when
+                // we're using Qemu, so the byte order of the colors needs to be
+                // swapped. We don't want to do this on real hardware as it tanks
+                // performance on my test laptop, which is why we request a different
+                // destination format in drm_init() when building for real hardware.
+#if VM_Target
                 u32 *dest = backbuffer->pixels;
                 for_count(u32, pixel, backbuffer->width*backbuffer->height){
-                    *dest++ = rgba_to_bgra(*dest);
+                    u32 c = *dest;
+                    *dest++ = rgba_to_bgra(c);
                 }
+#endif
 
-#if 1
                 // Request a page flip event for when DRM has finished displaying the frontbuffer.
                 struct drm_mode_crtc_page_flip flip_req = {0};
                 flip_req.fb_id = drm.framebuffers[backbuffer_index].fb_id;
@@ -527,7 +565,6 @@ int main(){
                     break;
                 }
                 requested_pageflip = true;
-#endif
             }
 
             // Here we use poll to wait for up to one second for DRM to give us back

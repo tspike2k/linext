@@ -8,10 +8,10 @@
 # NOTE: This expects the host system and target system to both be booted through BIOS. UEFI
 # will need different commands. See the article listed above.
 
-FLAGS="-static -O2 "
+FLAGS="-static -O2 -fvisibility=hidden "
 
 mkdir -p ./bin/rootfs
-gcc $FLAGS -o ./bin/rootfs/init src/init.c -I/usr/include/drm -lm
+gcc $FLAGS -DCbed_API="static "  -o ./bin/rootfs/init src/init.c -I/usr/include/drm -lm
 
 # Build the initramfs file so Linux can boot our init code.
 mkdir -p ./bin/rootfs/dev

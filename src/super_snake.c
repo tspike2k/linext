@@ -224,7 +224,7 @@ static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, f32 dt){
     /*blit_text(dest, baseline, font, gen_string("Mouse: %d, %d", temp, (int)mouse.x, (int)mouse.y));*/
 
     baseline.y += font->line_gap;
-    blit_text(dest, baseline, font, gen_string("dt: %.3f", temp, dt));
+    blit_text(dest, baseline, font, gen_string("dt: %.4f", temp, dt));
 
     for_count(u32, i, snake->parts_count){
         Ball *part = &snake->parts[i];
