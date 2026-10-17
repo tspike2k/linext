@@ -175,28 +175,16 @@ static void blit_background(Blit_Dest *img_dest, Blit_Canvas img_src){
 
     u32 width  = MIN(img_src.width, img_dest->width);
     u32 height = MIN(img_src.height, img_dest->height);
-    u32 src_stride  = img_src.stride;
-    u32 dest_stride = img_dest->stride;
+    u32 src_advance  = img_src.stride - width;
+    u32 dest_advance = img_dest->stride - width;
 
-#if 1
-    // TODO: Why doesn't this work? It causes a segfault.
     for_count(u32, y, height){
         for_count(u32, x, width){
-            dest[x + y * dest_stride] = src[x + y * src_stride];
+            *dest++ = *src++;
         }
+        src  += src_advance;
+        dest += dest_advance;
     }
-#else
-    // TODO: Why doesn't this work? It causes a segfault.
-    for_count(u32, y, height){
-        for_count(u32, x, width){
-            *dest = *src;
-            dest++;
-            src++;
-        }
-        src  += src_stride;
-        dest += dest_stride;
-    }
-#endif
 }
 
 static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, f32 dt){
@@ -209,13 +197,11 @@ static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, f32 dt){
 
     Ball *head = &snake->parts[0];
     Vec2 snake_dir = v2_normalize(v2_sub(mouse, head->p));
-    f32 snake_speed = 0.1f*(f32)s->screen_w;
+    f32 snake_speed = 0.75f*(f32)s->screen_w;
     Vec2 snake_accel = v2_muls(snake_dir, snake_speed*dt);
     snake->vel = v2_add(snake->vel, snake_accel);
     snake->vel = v2_sub(snake->vel, v2_muls(snake->vel, 0.05f)); // Estimate friction
     head->p = v2_add(head->p, v2_muls(snake->vel, dt));
-
-    s->score++;
 
     //
     // Render the game.

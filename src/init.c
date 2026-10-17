@@ -87,9 +87,10 @@ enum{
 #define ns_from_sec(seconds) (u64)(((f32)(seconds))*1000000000.0f)
 #define sec_from_ns(ns) (f32)(((f32)(ns))/1000000000.0f)
 #define free_if_nonzero(a) if((a)) free((a))
+#define ms_from_sec(seconds) (f32)(seconds*1000.0f)
 
-u8 g_temp_memory[8*1024*1024];
-u8 g_main_memory[12*1024*1024];
+u8 g_temp_memory[16*1024*1024];
+u8 g_main_memory[16*1024*1024];
 
 static void print_dir(const char *dir_path){
     DIR *dir = opendir(dir_path);
@@ -165,11 +166,16 @@ static bool drm_init(DRM_State *s){
         return false;
     }
 
+    // TODO: I had thought during an earlier version of testing it had become clear we needed to
+    // become the master of the DRM device in order to set KMS? That could have been a faulty
+    // assumption based on another issue. Disabling this code seems to work fine for now.
+#if 0
     // Become the master of the DRI device, needed to configure Kernel Mode Setting (KMS).
     if(ioctl(s->fd, DRM_IOCTL_SET_MASTER, 0) == IOCTL_ERROR){
         printf("Unable to become master of %s: %s\n", device_path, strerror(errno));
         return false;
     }
+#endif
 
     // Much like Vulkan, the API expects you to request card resources once to get the count
     // of each resource and then again after allocating to get the actual resources. To
@@ -360,7 +366,7 @@ static bool drm_init(DRM_State *s){
             continue;
         }
 
-        s->crtc_id = encoder.crtc_id;
+        s->crtc_id = crtc.crtc_id;
 
         // TODO: This doesn't sit right with me. The framebuffers could potentially have
         // different fb_ids, no? If so, does that mean we need to set MKS for each
@@ -395,7 +401,9 @@ static bool drm_init(DRM_State *s){
 static void drm_destroy(DRM_State *drm){
     // Stop being the master of the DRI device.
     // TODO: Do we really need to test this ioctl?
+#if 0
 	ioctl(drm->fd, DRM_IOCTL_DROP_MASTER, 0);
+#endif
 
     if(drm->fd != -1){
         close(drm->fd);
@@ -433,17 +441,16 @@ int main(){
 
     // TODO: Mount both /proc and /sys
 
-    u32            poll_fds_count = 0;
-    struct pollfd  poll_fds[2];
+    u32            poll_input_fds_count = 0;
+    struct pollfd  poll_input_fds[2];
     struct pollfd *poll_fd_mouse = NULL;
-    struct pollfd *poll_fd_drm   = NULL;
 
     int mouse_fd = open("/dev/input/mice", O_RDONLY|O_NONBLOCK);
     if(mouse_fd == -1){
         printf("Warning! Unable to open /dev/input/mice: %s\n", strerror(errno));
     }
     else{
-        poll_fd_mouse = &poll_fds[poll_fds_count++];
+        poll_fd_mouse = &poll_input_fds[poll_input_fds_count++];
         poll_fd_mouse->fd = mouse_fd;
         poll_fd_mouse->events = POLLIN;
     }
@@ -451,10 +458,6 @@ int main(){
     DRM_State drm = {0};
     if(drm_init(&drm)){
         /*u64 target_frame_time_ns = ns_from_sec(1.0f/60.0f);*/
-        poll_fd_drm = &poll_fds[poll_fds_count++];
-        poll_fd_drm->fd     = drm.fd;
-        poll_fd_drm->events = POLLIN;
-
         u32 backbuffer_index = 1;
         Blit_Dest canvas[Framebuffers_Count];
         for_count(u32, i, Framebuffers_Count){
@@ -469,6 +472,10 @@ int main(){
         Buffer memory = {g_main_memory, Array_Len(g_main_memory)};
         Buffer temp = {g_temp_memory, Array_Len(g_temp_memory)};
 
+        struct pollfd  poll_fd_drm;
+        poll_fd_drm.fd     = drm.fd;
+        poll_fd_drm.events = POLLIN;
+
         Game game = {};
         bool running = game_init(&game, screen_w, screen_h, &memory, &temp);
         bool requested_pageflip = false;
@@ -477,14 +484,12 @@ int main(){
         f32 dt = 0;
         while(running){
             u64 frame_start_ns = get_timestamp_ns();
-
             Buffer temp_restore = temp;
 
-            if(poll(poll_fds, poll_fds_count, 0) < 0){
+            if(poll(poll_input_fds, poll_input_fds_count, 0) < 0){
                 printf("Polling fds failed: %s. Aborting\n", strerror(errno));
                 break;
             }
-            assert(poll_fd_drm->events = POLLIN);
 
             if(mouse_fd != -1 && poll_fd_mouse->revents & POLLIN){
                 char buffer[1024];
@@ -501,8 +506,14 @@ int main(){
             // before the first request is filled.
             if(!requested_pageflip){
                 Blit_Dest *backbuffer = &canvas[backbuffer_index];
-                /*assert(dt > 0);*/
                 game_sim_and_draw(&game, backbuffer, v2(mouse_x, mouse_y), dt);
+
+                // Swap all the pixels from RGBA (our byte order) to BGRA
+                // TODO: Does DRM/KMS guarantee a BGRA surface?
+                u32 *dest = backbuffer->pixels;
+                for_count(u32, pixel, backbuffer->width*backbuffer->height){
+                    *dest++ = rgba_to_bgra(*dest);
+                }
 
 #if 1
                 // Request a page flip event for when DRM has finished displaying the frontbuffer.
@@ -519,36 +530,46 @@ int main(){
 #endif
             }
 
-#if 1
-            // TODO: Here we're doing a blocking read so that we can wait until the page can be
-            // flipped. This is pretty hacky, but it does mean we're not burning CPU time
-            // in a busy loop waiting for this to occur. There is probably a much smarter way
-            // to handle this.
-            if(poll_fd_drm->revents & POLLIN)
-            {
-                u32 flips_count = 0;
-                char drm_buffer[1024];
-                // TODO: Handle interrupts
-                ssize_t bytes_read = read(drm.fd, drm_buffer, sizeof(drm_buffer));
-                if(bytes_read < 0){
-                    printf("Read error: %s\n", strerror(errno));
-                }
-                for(u32 i = 0; i < bytes_read;){
-                    struct drm_event *evt = (struct drm_event *)&drm_buffer[i];
+            // Here we use poll to wait for up to one second for DRM to give us back
+            // an event saying the flip has completed.
+            // TODO: one second is a long time to wait on this. Should we wait for two 16ms frames
 
-                    switch(evt->type){
-                        case DRM_EVENT_FLIP_COMPLETE:{
-                            backbuffer_index = (backbuffer_index + 1) % Framebuffers_Count;
-                            requested_pageflip = false;
-                            flips_count++;
-                        } break;
+            if(poll(&poll_fd_drm, 1, (int)ms_from_sec(1)) >= 0){
+                if(poll_fd_drm.revents & POLLIN){
+                    u32 flips_count = 0;
+                    char drm_buffer[1024];
+                    // TODO: Handle interrupts
+                    ssize_t bytes_read = read(drm.fd, drm_buffer, sizeof(drm_buffer));
+                    if(bytes_read < 0){
+                        printf("Read error: %s\n", strerror(errno));
                     }
+                    for(u32 i = 0; i < bytes_read;){
+                        struct drm_event *evt = (struct drm_event *)&drm_buffer[i];
 
-                    i += evt->length;
+                        switch(evt->type){
+                            case DRM_EVENT_FLIP_COMPLETE:{
+                                struct drm_event_vblank *vblank = (struct drm_event_vblank *)evt;
+                                /*printf("Vblank event %u\n", );*/
+                                game.score = vblank->sequence;
+
+                                backbuffer_index = (backbuffer_index + 1) % Framebuffers_Count;
+                                flips_count++;
+                                requested_pageflip = false;
+                            } break;
+                        }
+
+                        i += evt->length;
+                    }
+                    assert(flips_count == 1);
                 }
-                assert(flips_count == 1);
+                else{
+                    printf("Unable to wait for Vblank.\n");
+                }
             }
-#endif
+            else{
+                printf("Polling DRM failed. Aborting.\n");
+                break;
+            }
 
             temp = temp_restore;
             u64 frame_end_ns = get_timestamp_ns();
