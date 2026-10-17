@@ -12,21 +12,21 @@ Currently everything presented here is only a proof-of-concept. Bypassing the GN
 
 ## Setup
 
-This will guide you through the process of setting up your developer environment for building and testing this project on Linux. This project is being developed using on a Manjaro distro, but will likely work for Arch or other Arch-based distros. Commands will very likely differ for other Linux distros, however.
+This will guide you through the process of setting up your developer environment for building and testing this project on Linux. Development is currently being done on a Manjaro distro, but will likely work for Arch or other Arch-based distros. Commands will very probably differ for other Linux distros, however.
 
 It's likely you're distro already comes with these, but these packages are needed to build the project:
 
 `sudo pacman -S gcc tar wget`
 
-For testing via a virtual machine, you will need qemu installed:
+For testing via a virtual machine, you will need Qemu installed:
 
 `sudo pacman -S qemu-system-x86 qemu-ui-gtk`
 
 ## Compiling
 
-To compile, navigate to the root directory of the project. From there, first run the `build_kernel.sh` script to compile the Linux kernel. This may take a while on the first run. To test in a virtual machine, run the `build.sh` script to build the userland and then run `test.sh`. This will launch the project inside a qemu virtual machine.
+To compile, navigate to the root directory of the project. From there, first run the `build_kernel.sh` script to compile the Linux kernel. This may take a while on the first run. To test in a virtual machine, run the `build.sh` script to build the userland and then run `test.sh`. This will launch the project inside a Qemu virtual machine.
 
-To test on real hardware, first build the kernel (if you haven't already done so) by running `build_kernel.sh`. Then run `build_iso.sh` to create a live image named *linext.iso* inside the *bin* folder. Burn the live image to a disc or USB stick, insert it into a computer, power the computer on and then select the media as the boot device.
+To test on real hardware, first build the kernel (if you haven't already done so) by running `build_kernel.sh`. Then run `build_iso.sh` to create a live image named *linext.iso* inside the *bin* folder. Burn the live image to a disc or USB stick, insert it into a computer, power the computer on and then select the media as the boot device. *WARNING!* This project is a work-in-progress; though unlikely, running it on real hardware could cause damage to your computer! Use at your own risk.
 
 ## Testing
 
