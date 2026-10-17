@@ -22,13 +22,13 @@ For testing via a virtual machine, you will need Qemu installed:
 
 `sudo pacman -S qemu-system-x86 qemu-ui-gtk`
 
-## Compiling
+## Compiling and Testing
 
-To compile, navigate to the root directory of the project. From there, first run the `build_kernel.sh` script to compile the Linux kernel. This may take a while on the first run. To test in a virtual machine, run the `build.sh` script to build the userland and then run `test.sh`. This will launch the project inside a Qemu virtual machine.
+To compile, navigate to the root directory of the project. From there, first run the `build_kernel.sh` script to compile the Linux kernel. This may take a while on the first run. After this, you can choose to build for a virtual machine or real hardware. If targeting a virtual machine, run `build.sh`. For real hardware, run `build_iso.sh`.
 
-To test on real hardware, first build the kernel (if you haven't already done so) by running `build_kernel.sh`. Then run `build_iso.sh` to create a live image named *linext.iso* inside the *bin* folder. Burn the live image to a disc or USB stick, insert it into a computer, power the computer on and then select the media as the boot device. __WARNING!__ This project is a work-in-progress; though unlikely, running it on real hardware could cause damage to your computer! Use at your own risk.
+__WARNING!__ This project is a work-in-progress; though unlikely, running it on real hardware could cause damage to your computer! Use at your own risk.
 
-## Testing
+To test inside a virtual machine, run the `test.sh` script. To test on real hardware, burn the *./bin/linext.iso* live image to a disc or USB stick, insert it into a computer, power the computer on and then select the media as the boot device.
 
 Please note, Qemu doesn't seem to properly handle Vsync page flip requests. This causes horrible flickering (worse than an old NES game). Fixes for this are currently being investigated.
 
