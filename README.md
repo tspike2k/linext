@@ -28,6 +28,10 @@ To compile, navigate to the root directory of the project. From there, first run
 
 To test on real hardware, first build the kernel (if you haven't already done so) by running `build_kernel.sh`. Then run `build_iso.sh` to create a live image named *linext.iso* inside the *bin* folder. Burn the live image to a disc or USB stick, insert it into a computer, power the computer on and then select the media as the boot device.
 
+## Testing
+
+Please note, Qemu doesn't seem to properly handle Vsync page flip requests. This causes horrible flickering (worse than an old NES game). Fixes for this are currently being investigated.
+
 ## License
 
 The majority of this project's source code is shared under the zlib license. See accompanying [license file](https://github.com/tspike2k/linext/blob/main/LICENSE.txt). All code under the
