@@ -20,7 +20,7 @@ It's likely you're distro already comes with these, but these packages are neede
 
 For testing via a virtual machine, you will need Qemu installed:
 
-`sudo pacman -S qemu-system-x86 qemu-ui-gtk`
+`sudo pacman -S qemu-system-x86 qemu-ui-sdl`
 
 ## Compiling and Testing
 
@@ -29,8 +29,6 @@ To compile, navigate to the root directory of the project. From there, first run
 __WARNING!__ This project is a work-in-progress; though unlikely, running it on real hardware could cause damage to your computer! Use at your own risk.
 
 To test inside a virtual machine, run the `test.sh` script. To test on real hardware, burn the *./bin/linext.iso* live image to a disc or USB stick, insert it into a computer, power the computer on and then select the media as the boot device.
-
-Please note, Qemu doesn't seem to properly handle Vsync page flip requests. This causes horrible flickering (worse than an old NES game). Fixes for this are currently being investigated.
 
 ## License
 

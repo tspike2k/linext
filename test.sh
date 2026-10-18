@@ -1,27 +1,32 @@
 #!/bin/bash
 
-# These are various failed attemps to get graphics working with Qemu. It's possible they may
-# work fine under the right circumstances.
-#qemu-system-x86_64 -kernel ./boot/bzImage -initrd ./boot/initramfs.cpio
-#qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -device bochs-display -vga std
-#qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -device bochs-display
-#qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -vga std -device bochs-display
-#qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -vga std -m 512M -append "console=ttyS0 root=/dev/ram0"
-#qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -m 512M -vga std -append "root=/dev/ram0 console=tty0 video=vesafb:ywrap,mode:1024x768-32"
-#qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -m 512M -vga virtio -display gtk,gl=on
-#qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -m 512M -vga virtio
-#qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -append "console=ttyS0 quiet" -vga std
-
-
-# NOTE: To disable blinking terminal cursor when using fbdev, you need to provide the kernel with
-# the following boot parameters to the kernel:
-# "consoleblank=0 vt.global_cursor_default=0"
-# Sources:
-# https://developer.toradex.com/linux-bsp/application-development/multimedia/framebuffer-linux/
 #
 # NOTE: The "console=ttyS0" parameter routes terminal output to the serial0 device, which
 # can be viewed in Qemu-gtk under the View menu or by pressing Ctrl+Alt+4
-qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -device bochs-display -append "console=ttyS0 consoleblank=0 vt.global_cursor_default=0"
-#qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -device virtio-gpu-pci -append "console=ttyS0"
+#
 
-#qemu-system-x86_64 -cdrom ./bin/linext.iso -device bochs-display
+#
+# Finding the right configuration options to get Qemu working well has been quite the challenge.
+# Most options won't show graphics at all, still more will not play well with Vsynced DRM/KMS
+# rendering. It sounds as though you can tell Qemu to use the underlying DRM/KMS device on the
+# host system, but this requires hardware that can support it (and probably tricky system
+# configuration).
+#
+# For the longest time, this magical incantation worked quite well:
+# qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -device bochs-display -append "console=ttyS0 consoleblank=0 vt.global_cursor_default=0"
+#
+# Once the guest was rendering in less than 16ms, hideous sprite flickering would occur the likes
+# of which would put the NES version of Commando to shame. My best guess is this was caused by
+# Qemu not properly handling page flip requests, causing us to swap buffers too quickly and
+# write directly into the front buffer.
+#
+# After some searching and a bit of testing, it seemed as though the fix would be to switch to
+# using "-display gtk,gl=on,show-cursor=on". It fixed the flickering, but mouse events stopped
+# working altogether. It turns out, to get the same effect you can switch to using SDL
+# as the UI target and use that one instead. After that, the mouse worked. Goodness. Gracious.
+#
+# This is the best working invocation, as far as I can see:
+qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -device bochs-display -display sdl,gl=on -append "console=ttyS0"
+
+# NOTE: Setting the device to "virtio-gpu-gl-pci" also seems to work, but not any better as far
+# as I can see. Plus, you need to install more packages for that one.

@@ -9,6 +9,12 @@ NOTE: In modern day, fbdev is depricated in favor of DRM. Though Linux can be co
 provide compatibility for fbdev, it is limited and does not seem to support double-buffering.
 Though this is a simple example of getting grapical output, these days using fbdev is
 not ideal. This file is just kept here as a curio.
+
+# NOTE: To disable blinking terminal cursor when using fbdev, you need to provide the kernel with
+# the following boot parameters to the kernel:
+# "consoleblank=0 vt.global_cursor_default=0"
+# Sources:
+# https://developer.toradex.com/linux-bsp/application-development/multimedia/framebuffer-linux/
 */
 
 #include <stdio.h>
