@@ -8,9 +8,7 @@
 TODO:
     - Title screen.
     - Highscore table.
-    - Speed should increase as new parts are added.
     - Procedural color selection for snake parts.
-    - Gradually tapering snake part sizes.
 */
 
 #include "cbed/common.h"
@@ -45,6 +43,7 @@ typedef struct{
     Xorshift32 rng;
     Vec2 food_pos;
     f32  food_radius;
+    bool debug_mode;
 } Game;
 
 static void spawn_food(Game *s){
@@ -109,13 +108,19 @@ static bool game_init(Game *s, f32 screen_w, f32 screen_h, Buffer *memory, Buffe
 
     Vec2 screen_center = v2(0.5f*s->screen_w, 0.5f*s->screen_h);
 
+    f32 max_part_size = 0.035f*s->screen_h;
+    f32 min_part_size = max_part_size*0.25f;
+
     for_count(u32, i, Array_Len(s->snake.parts)){
         Snake_Part *part = &s->snake.parts[i];
 
         part->p = screen_center;
-        part->radius = 0.035f*s->screen_h;
+        f32 t = ((f32)i) / (f32)Array_Len(s->snake.parts);
+        part->radius = lerp(min_part_size, max_part_size, 1.0f-t);
         part->color = 0xffff0000;
     }
+
+    s->debug_mode = true;
 
     // TODO: Use time as the seed?
     s->rng = xs32_seed(748479887);
@@ -231,9 +236,13 @@ static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, f32 dt){
     //
     Snake *snake = &s->snake;
 
+    f32 snake_speed_min = 0.75f*(f32)s->screen_w;
+    f32 snake_speed_max = 3.5f*snake_speed_min;
+    f32 snake_speed_t = ((f32)snake->parts_count) / (f32)Array_Len(s->snake.parts);
+    f32 snake_speed = lerp(snake_speed_min, snake_speed_max, snake_speed_t);
+
     Snake_Part *head = &snake->parts[0];
     Vec2 snake_dir = v2_normalize(v2_sub(mouse, head->p));
-    f32 snake_speed = 0.75f*(f32)s->screen_w;
     Vec2 snake_accel = v2_muls(snake_dir, snake_speed*dt);
     snake->vel = v2_add(snake->vel, snake_accel);
     snake->vel = v2_sub(snake->vel, v2_muls(snake->vel, 0.05f)); // Estimate friction
@@ -245,21 +254,24 @@ static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, f32 dt){
         snake_add_part(snake);
     }
 
-    for_range(u32, i, 1, Array_Len(snake->parts)){
-        Snake_Part *parent = &snake->parts[i-1];
-        Snake_Part *part = &snake->parts[i];
+    for_range(u32, part_index, 1, Array_Len(snake->parts)){
+        Snake_Part *parent = &snake->parts[part_index-1];
+        Snake_Part *part = &snake->parts[part_index];
         f32 target_dist = parent->radius + part->radius;
         if(v2_dist_sq(part->p, parent->p) > squared(target_dist)){
             Vec2 dir = v2_normalize(v2_sub(part->p, parent->p));
             part->p = v2_add(parent->p, v2_muls(dir, target_dist));
         }
 
-        bool part_overlaps_head = circles_overlap(part->p, part->radius, head->p, head->radius);
         if(part->can_collide){
+            // Give the player a little leaway when it comes to colliding with it's own body.
+            f32 head_test_radius = head->radius - head->radius*0.35f;
+
             // We only want to check for collisions if this part has actually been spawned
             // and as long as it's not the second snake part. There is no legitimate way
             // for the snake head to hit the very next part.
-            if(part_overlaps_head && i < snake->parts_count && i > 1){
+            bool overlaps_head = circles_overlap(part->p, part->radius, head->p, head_test_radius);
+            if(overlaps_head && part_index < snake->parts_count && part_index > 1){
                 // TODO: Game over!
                 assert(0);
             }
@@ -268,7 +280,7 @@ static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, f32 dt){
             // This is a small gameplay tweak in favor of the player. If a new snake part spawns
             // underneath the snake head, that won't count as a collision until the head moves
             // away from the part.
-            if(!part_overlaps_head){
+            if(!circles_overlap(part->p, part->radius, head->p, head->radius)){
                 part->can_collide = true;
             }
         }
@@ -291,11 +303,10 @@ static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, f32 dt){
     Vec3 baseline = v3(pad, font->cap_height + pad, 0);
     blit_text(dest, baseline, font, gen_string("Score: %d", temp, s->score));
 
-    /*baseline.y += font->line_gap;*/
-    /*blit_text(dest, baseline, font, gen_string("Mouse: %d, %d", temp, (int)mouse.x, (int)mouse.y));*/
-
-    baseline.y += font->line_gap;
-    blit_text(dest, baseline, font, gen_string("dt: %.4f", temp, dt));
+    if(s->debug_mode){
+        baseline.y += font->line_gap;
+        blit_text(dest, baseline, font, gen_string("dt: %.4f", temp, dt));
+    }
 
     blit_gradient_ball(dest, s->food_pos, s->food_radius, 0xff42c3ff, 0xff172cde);
 
