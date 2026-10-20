@@ -44,6 +44,7 @@ https://github.com/rockytriton/LLD/tree/main/linux_os
 #include "cbed/draw.c"
 #include "cbed/files.c"
 #include "cbed/img.c"
+#include "cbed/random.c"
 #include "super_snake.c"
 
 typedef struct{
@@ -533,6 +534,9 @@ int main(){
                     mouse_x += evt->data[1];
                     mouse_y -= evt->data[2];
                 }
+
+                mouse_x = CLAMP(mouse_x, 0, screen_w);
+                mouse_y = CLAMP(mouse_y, 0, screen_h);
             }
 
             // Sanity check. We need to be sure we don't send a second page flip request
@@ -586,8 +590,7 @@ int main(){
                         switch(evt->type){
                             case DRM_EVENT_FLIP_COMPLETE:{
                                 struct drm_event_vblank *vblank = (struct drm_event_vblank *)evt;
-                                /*printf("Vblank event %u\n", );*/
-                                game.score = vblank->sequence;
+                                /*printf("Vblank sequence: %u\n", vblank->sequence);*/
 
                                 backbuffer_index = (backbuffer_index + 1) % Framebuffers_Count;
                                 flips_count++;

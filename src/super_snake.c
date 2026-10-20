@@ -4,21 +4,32 @@
 // License:   Boost Software License 1.0 (https://www.boost.org/LICENSE_1_0.txt)
 //------------------------------------------------------------------------------
 
+/*
+TODO:
+    - Title screen.
+    - Highscore table.
+    - Speed should increase as new parts are added.
+    - Procedural color selection for snake parts.
+    - Gradually tapering snake part sizes.
+*/
+
 #include "cbed/common.h"
 #include "cbed/font.h"
 #include "cbed/files.h"
 #include "cbed/img.h"
+#include "cbed/random.h"
 
 typedef struct{
     Vec2 p;
     f32  radius;
     u32  color;
-} Ball;
+    bool can_collide;
+} Snake_Part;
 
 typedef struct{
-    u32  parts_count;
-    Ball parts[256];
-    Vec2 vel;
+    u32        parts_count;
+    Snake_Part parts[128];
+    Vec2       vel;
 } Snake;
 
 typedef struct{
@@ -31,21 +42,33 @@ typedef struct{
     f32 screen_h;
     int score;
     int high_score;
+    Xorshift32 rng;
+    Vec2 food_pos;
+    f32  food_radius;
 } Game;
 
-static void snake_add_part(Snake *snake, Vec2 p, f32 radius, u32 color){
-    assert(snake->parts_count <  Array_Len(snake->parts));
-    Ball *part = &snake->parts[snake->parts_count++];
-    part->p      = p;
-    part->radius = radius;
-    part->color  = color;
+static void spawn_food(Game *s){
+    f32 px = random_f32_between(xs32_rand(&s->rng), s->food_radius, s->screen_w - s->food_radius);
+    f32 py = random_f32_between(xs32_rand(&s->rng), s->food_radius, s->screen_h - s->food_radius);
+    s->food_pos = v2(px, py);
+}
+
+static void snake_add_part(Snake *snake){
+    if(snake->parts_count < Array_Len(snake->parts)){
+        Snake_Part *part = &snake->parts[snake->parts_count++];
+        part->can_collide = false;
+    }
 }
 
 static void game_restart(Game *s){
     s->score = 0;
 
     Snake *snake = &s->snake;
-    snake_add_part(snake, v2(0.5f*s->screen_w, 0.5f*s->screen_h), 0.035f*s->screen_h, 0xffff0000);
+    snake->parts_count = 0;
+    snake_add_part(snake); // Add the head
+    s->food_radius = 0.018f*s->screen_w;
+
+    spawn_food(s);
 }
 
 static Blit_Canvas pixels_to_canvas(Img_Pixels pixels){
@@ -83,6 +106,19 @@ static bool game_init(Game *s, f32 screen_w, f32 screen_h, Buffer *memory, Buffe
     if(!s->grass.pixels){
         return false;
     }
+
+    Vec2 screen_center = v2(0.5f*s->screen_w, 0.5f*s->screen_h);
+
+    for_count(u32, i, Array_Len(s->snake.parts)){
+        Snake_Part *part = &s->snake.parts[i];
+
+        part->p = screen_center;
+        part->radius = 0.035f*s->screen_h;
+        part->color = 0xffff0000;
+    }
+
+    // TODO: Use time as the seed?
+    s->rng = xs32_seed(748479887);
 
     game_restart(s);
 
@@ -153,8 +189,8 @@ static u32 lerp_colors(u32 a, u32 b, f32 t){
 static void blit_gradient_ball(Blit_Dest *dest, Vec2 center, f32 radius, u32 color_a, u32 color_b){
     int min_x = MAX(center.x - radius, 0.0f);
     int min_y = MAX(center.y - radius, 0.0f);
-    int max_x = MIN(center.x + radius, (f32)dest->width);
-    int max_y = MIN(center.y + radius, (f32)dest->height);
+    int max_x = MIN(center.x + radius+1, (f32)dest->width);
+    int max_y = MIN(center.y + radius+1, (f32)dest->height);
 
     for_range(int, y, min_y, max_y){
         for_range(int, x, min_x, max_x){
@@ -195,13 +231,48 @@ static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, f32 dt){
     //
     Snake *snake = &s->snake;
 
-    Ball *head = &snake->parts[0];
+    Snake_Part *head = &snake->parts[0];
     Vec2 snake_dir = v2_normalize(v2_sub(mouse, head->p));
     f32 snake_speed = 0.75f*(f32)s->screen_w;
     Vec2 snake_accel = v2_muls(snake_dir, snake_speed*dt);
     snake->vel = v2_add(snake->vel, snake_accel);
     snake->vel = v2_sub(snake->vel, v2_muls(snake->vel, 0.05f)); // Estimate friction
     head->p = v2_add(head->p, v2_muls(snake->vel, dt));
+
+    if(circles_overlap(head->p, head->radius, s->food_pos, s->food_radius)){
+        s->score++;
+        spawn_food(s);
+        snake_add_part(snake);
+    }
+
+    for_range(u32, i, 1, Array_Len(snake->parts)){
+        Snake_Part *parent = &snake->parts[i-1];
+        Snake_Part *part = &snake->parts[i];
+        f32 target_dist = parent->radius + part->radius;
+        if(v2_dist_sq(part->p, parent->p) > squared(target_dist)){
+            Vec2 dir = v2_normalize(v2_sub(part->p, parent->p));
+            part->p = v2_add(parent->p, v2_muls(dir, target_dist));
+        }
+
+        bool part_overlaps_head = circles_overlap(part->p, part->radius, head->p, head->radius);
+        if(part->can_collide){
+            // We only want to check for collisions if this part has actually been spawned
+            // and as long as it's not the second snake part. There is no legitimate way
+            // for the snake head to hit the very next part.
+            if(part_overlaps_head && i < snake->parts_count && i > 1){
+                // TODO: Game over!
+                assert(0);
+            }
+        }
+        else{
+            // This is a small gameplay tweak in favor of the player. If a new snake part spawns
+            // underneath the snake head, that won't count as a collision until the head moves
+            // away from the part.
+            if(!part_overlaps_head){
+                part->can_collide = true;
+            }
+        }
+    }
 
     //
     // Render the game.
@@ -226,11 +297,13 @@ static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, f32 dt){
     baseline.y += font->line_gap;
     blit_text(dest, baseline, font, gen_string("dt: %.4f", temp, dt));
 
+    blit_gradient_ball(dest, s->food_pos, s->food_radius, 0xff42c3ff, 0xff172cde);
+
     for_count(u32, i, snake->parts_count){
-        Ball *part = &snake->parts[i];
+        Snake_Part *part = &snake->parts[i];
         blit_gradient_ball(dest, part->p, part->radius, part->color, 0xff000000);
     }
 
-    Rect cursor = {mouse, v2(20, 20)};
-    blit_rect(dest, cursor, 0, 0xff00ffff);
+    blit_rect(dest, (Rect){mouse, v2(2, 20)}, 0, 0xffffffff);
+    blit_rect(dest, (Rect){mouse, v2(20, 2)}, 0, 0xffffffff);
 }
