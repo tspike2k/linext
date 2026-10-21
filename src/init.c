@@ -66,6 +66,10 @@ typedef struct {
     u32 crtc_id;
 } DRM_State;
 
+#define Mouse_Btn_Left   0x1
+#define Mouse_Btn_Right  0x2
+#define Mouse_Btn_Middle 0x4
+
 typedef struct{
     s8 data[3];
 } Mouse_Event;
@@ -519,6 +523,7 @@ int main(){
         while(running){
             u64 frame_start_ns = get_timestamp_ns();
             Buffer temp_restore = temp;
+            bool mouse_left_clicked = false;
 
             if(poll(poll_input_fds, poll_input_fds_count, 0) < 0){
                 printf("Polling fds failed: %s. Aborting\n", strerror(errno));
@@ -531,6 +536,10 @@ int main(){
                 ssize_t bytes_read = read(mouse_fd, buffer, sizeof(buffer));
                 for(u32 i = 0; i < bytes_read; i += sizeof(3)){
                     Mouse_Event *evt = (Mouse_Event *)&buffer[i];
+                    if(evt->data[0] & Mouse_Btn_Left){
+                        mouse_left_clicked = true;
+                    }
+
                     mouse_x += evt->data[1];
                     mouse_y -= evt->data[2];
                 }
@@ -543,7 +552,7 @@ int main(){
             // before the first request is filled.
             if(!requested_pageflip){
                 Blit_Dest *backbuffer = &canvas[backbuffer_index];
-                game_sim_and_draw(&game, backbuffer, v2(mouse_x, mouse_y), dt);
+                game_sim_and_draw(&game, backbuffer, v2(mouse_x, mouse_y), mouse_left_clicked, dt);
 
                 // We can't configure the color format of the framebuffers when
                 // we're using Qemu, so the byte order of the colors needs to be
