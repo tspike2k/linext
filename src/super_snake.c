@@ -17,6 +17,8 @@ TODO:
 #include "cbed/img.h"
 #include "cbed/random.h"
 
+#define Color_White 0xffffffff
+
 typedef enum {
     Game_Mode_Menu,
     Game_Mode_Play,
@@ -156,6 +158,12 @@ static bool game_init(Game *s, f32 screen_w, f32 screen_h, Buffer *memory, Buffe
     s->game_mode = Game_Mode_Menu;
     s->menu_focus = v2(0.5f, 0.5f);
     s->debug_mode = true;
+
+    if(s->debug_mode){
+        for_count(u32, i, Array_Len(s->highscores)){
+            s->highscores[i] = (i+1) * 20;
+        }
+    }
 
     // TODO: Use time as the seed?
     s->rng = xs32_seed(748479887);
@@ -409,35 +417,51 @@ static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, bool mouse_l
 
         case Game_Mode_Menu:{
             String title = str_lit("Super Snake");
-            f32 tw = font_get_text_width(font, title.text, title.size);
+            f32 tw = font_get_text_width(font, title);
             Vec3 baseline = v3(screen_center.x - tw*0.5f, screen_center.y*0.5f, 0);
             blit_text(dest, baseline, font, title);
         } break;
 
         case Game_Mode_GameOver:{
             String msg = str_lit("Game Over!");
-            f32 tw = font_get_text_width(font, msg.text, msg.size);
+            f32 tw = font_get_text_width(font, msg);
             Vec3 baseline = v3(screen_center.x - tw*0.5f, screen_center.y, 0);
             blit_text(dest, baseline, font, msg);
         } break;
 
         case Game_Mode_Scores:{
             String title = str_lit("Highscores:");
-            f32 tw = font_get_text_width(font, title.text, title.size);
+            f32 tw = font_get_text_width(font, title);
             Vec3 baseline = v3(screen_center.x - tw*0.5f, screen_center.y*0.5f, 0);
             blit_text(dest, baseline, font, title);
+            baseline.y += font->line_gap;
 
             f32 table_width = 400;
-            baseline = v3(screen_center.x - table_width*0.5f, screen_center.y*0.5f, 0);
+            baseline.x = screen_center.x - table_width*0.5f;
             for_count(u32, i, Array_Len(s->highscores)){
-                u32 score_index = Array_Len(s->highscores) - i;
-                u32 score = s->highscores[score_index];
-                blit_text(dest, baseline, font, gen_string("%02d", temp, score_index));
+                u32 score_index = Array_Len(s->highscores)-1 - i;
+                u32 *slot = &s->highscores[score_index];
+                if(slot == s->new_score_slot){
+                    dest->tint = 0xff00ffff; // TODO: Animate the tint.
+                }
+                else{
+                    dest->tint = Color_White;
+                }
+                blit_text(dest, baseline, font, gen_string("%02d", temp, score_index+1));
+
+                u32 score = *slot;
                 if(score > 0){
                     // TODO: Draw score.
+                    String score_text = gen_string("%d", temp, score);
+                    f32 tw = font_get_text_width(font, score_text);
+                    Vec3 p = v3(baseline.x + table_width - tw, baseline.y, baseline.z);
+                    blit_text(dest, p, font, score_text);
                 }
                 baseline.y += font->line_gap;
             }
+
+            // NOTE: Ensure we don't accidentally leave sprite tinting on.
+            dest->tint = Color_White;
         } break;
     }
 }

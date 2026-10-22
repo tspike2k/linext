@@ -49,13 +49,13 @@ Cbed_API Font_Glyph* font_get_glyph(Font* font, u32 codepoint){
     return result;
 }
 
-Cbed_API f32 font_get_text_width(Font* font, const char *text, size_t text_len){
+Cbed_API f32 font_get_text_width(Font* font, String text){
     if(font->glyphs_count == 0) return 0;
 
     u32 prev_codepoint = 0;
     f32 result = 0;
-    for_count(size_t, i, text_len){
-        char c = text[i];
+    for_count(size_t, i, text.size){
+        char c = text.text[i];
         // TODO: Account for line endings?
 
         Font_Glyph *glyph   = font_get_glyph(font, c);
