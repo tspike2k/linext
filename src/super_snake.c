@@ -4,13 +4,6 @@
 // License:   Boost Software License 1.0 (https://www.boost.org/LICENSE_1_0.txt)
 //------------------------------------------------------------------------------
 
-/*
-TODO:
-    - Highscore table.
-    - Restrict snake head to playfield?
-    - Title font.
-*/
-
 #include "cbed/common.h"
 #include "cbed/font.h"
 #include "cbed/files.h"
@@ -159,12 +152,6 @@ static bool game_init(Game *s, f32 screen_w, f32 screen_h, Buffer *memory, Buffe
     s->menu_focus = v2(0.5f, 0.5f);
     s->debug_mode = true;
 
-    if(s->debug_mode){
-        for_count(u32, i, Array_Len(s->highscores)){
-            s->highscores[i] = (i+1) * 20;
-        }
-    }
-
     // TODO: Use time as the seed?
     s->rng = xs32_seed(748479887);
 
@@ -218,7 +205,7 @@ static String gen_string(const char *fmt, Buffer *buffer, ...){
 }
 
 static u32 lerp_colors(u32 a, u32 b, f32 t){
-    // TODO: This should probably be done in linear RGB-space.
+    // NOTE: The result would be better if done in linear RGB-space.
     Vec4 av = v4(
         ((a >> 16) & 0xff), ((a >>  8) & 0xff),
         ((a >>  0) & 0xff), ((a >> 24) & 0xff)
@@ -345,11 +332,18 @@ static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, bool mouse_l
                     bool overlaps_head = circles_overlap(part->p, part->radius, head->p, head_test_radius);
                     if(overlaps_head && part_index < snake->parts_count && part_index > 1){
                         s->game_mode = Game_Mode_GameOver;
+
+                        // Search to see if we can add the current score to the highscores list.
                         for_count(u32, i, Array_Len(s->highscores)){
                             if(s->score >= s->highscores[i]){
+                                // Bump lower scores further down
+                                if(i+1 < Array_Len(s->highscores)){
+                                    memmove(&s->highscores[i+1], &s->highscores[i],
+                                    (Array_Len(s->highscores) - i - 1)*sizeof(u32));
+                                }
+
+                                s->highscores[i]  = s->score;
                                 s->new_score_slot = &s->highscores[i];
-                                // TODO: Bump scores that are lower than this one.
-                                s->highscores[i] = s->score;
                                 break;
                             }
                         }
@@ -438,11 +432,12 @@ static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, bool mouse_l
 
             f32 table_width = 400;
             baseline.x = screen_center.x - table_width*0.5f;
-            for_count(u32, i, Array_Len(s->highscores)){
-                u32 score_index = Array_Len(s->highscores)-1 - i;
+            for_count(u32, score_index, Array_Len(s->highscores)){
                 u32 *slot = &s->highscores[score_index];
                 if(slot == s->new_score_slot){
-                    dest->tint = 0xff00ffff; // TODO: Animate the tint.
+                    f32 t = absf(0.8f*cos(0.5f*s->t*TAU));
+                    Vec4 color = v4_lerp(v4(1, 1, 0, 1), v4(1, 1, 1, 1), t);
+                    dest->tint = color_from_v4(color);
                 }
                 else{
                     dest->tint = Color_White;
@@ -451,7 +446,6 @@ static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, bool mouse_l
 
                 u32 score = *slot;
                 if(score > 0){
-                    // TODO: Draw score.
                     String score_text = gen_string("%d", temp, score);
                     f32 tw = font_get_text_width(font, score_text);
                     Vec3 p = v3(baseline.x + table_width - tw, baseline.y, baseline.z);
@@ -460,7 +454,7 @@ static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, bool mouse_l
                 baseline.y += font->line_gap;
             }
 
-            // NOTE: Ensure we don't accidentally leave sprite tinting on.
+            // NOTE: Ensure we don't accidentally leave sprite tinting turned on.
             dest->tint = Color_White;
         } break;
     }
