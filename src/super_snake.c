@@ -428,12 +428,13 @@ static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, bool mouse_l
             blit_text(dest, baseline, font, title);
 
             f32 table_width = 400;
-            baseline = v3(screen_center.x - table_width*0.5f, screen_center.y, 0);
+            baseline = v3(screen_center.x - table_width*0.5f, screen_center.y*0.5f, 0);
             for_count(u32, i, Array_Len(s->highscores)){
                 u32 score_index = Array_Len(s->highscores) - i;
                 u32 score = s->highscores[score_index];
+                blit_text(dest, baseline, font, gen_string("%02d", temp, score_index));
                 if(score > 0){
-                    blit_text(dest, baseline, font, gen_string("%02d", temp, score_index));
+                    // TODO: Draw score.
                 }
                 baseline.y += font->line_gap;
             }

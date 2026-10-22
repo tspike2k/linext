@@ -13,7 +13,7 @@
 # configuration).
 #
 # For the longest time, this magical incantation worked quite well:
-# qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -device bochs-display -append "console=ttyS0 consoleblank=0 vt.global_cursor_default=0"
+ qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -device bochs-display -append "console=ttyS0 consoleblank=0 vt.global_cursor_default=0"
 #
 # Once the guest was rendering in less than 16ms, hideous sprite flickering would occur the likes
 # of which would put the NES version of Commando to shame. My best guess is this was caused by
@@ -26,7 +26,7 @@
 # as the UI target and use that one instead. After that, the mouse worked. Goodness. Gracious.
 #
 # This is the best working invocation, as far as I can see:
-qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -device bochs-display -display sdl,gl=on -append "console=ttyS0"
+#qemu-system-x86_64 -kernel ./bin/bzImage -initrd ./bin/initramfs.cpio.gz -device bochs-display -display sdl,gl=on -append "console=ttyS0"
 
 # NOTE: Setting the device to "virtio-gpu-gl-pci" also seems to work, but not any better as far
 # as I can see. Plus, you need to install more packages for that one.

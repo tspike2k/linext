@@ -4,6 +4,8 @@
 // License:   Boost Software License 1.0 (https://www.boost.org/LICENSE_1_0.txt)
 //------------------------------------------------------------------------------
 #include "draw.h"
+#include "img.h"
+#include "math.h"
 
 static u32 blend_colors_premultiplied_alpha(u32 source, u32 dest){
     // Blending code adapted from Handmade Hero.
@@ -56,19 +58,26 @@ Cbed_API void blit_sprite(Blit_Dest *dest, Blit_Canvas src, Vec3 top_left){
     int x = (int)top_left.x;
     int y = (int)top_left.y;
 
-    // TODO: This only prevents blitting that tries to draw too far right or down,
-    // but now too far left or up. Fix this!
-    int width  = MIN(src.width, dest->width - x);
-    int height = MIN(src.height, dest->height - y);
+    int min_x = MAX(0, top_left.x);
+    int min_y = MAX(0, top_left.y);
+    int max_x = MIN(min_x + src.width, dest->width);
+    int max_y = MIN(min_y + src.height, dest->height);
+    int width  = max_x - min_x;
+    int height = max_y - min_y;
 
     for_count(int, sy, height){
         for_count(int, sx, width){
             u32 *dest_color = &dest->pixels[x + sx + (y + sy) * dest->stride];
             u32 src_color = src.pixels[sx + sy * src.stride];
+            if(dest->tint != 0xffffffff){
+                Vec4 a = v4_from_color(src_color);
+                Vec4 b = v4_from_color(dest->tint);
+                src_color = color_from_v4(v4_mul(a, b));
+            }
+
             u8 alpha = (src_color >> 24) & 0xff;
             // TODO: The blend is likely expensive, but is branching really going to make this
             // any faster? This needs to be investigated.
-#if 0
             if(alpha == 0){
                 continue;
             }
@@ -78,9 +87,6 @@ Cbed_API void blit_sprite(Blit_Dest *dest, Blit_Canvas src, Vec3 top_left){
             else{
                 *dest_color = blend_colors_premultiplied_alpha(src_color, *dest_color);
             }
-#else
-                *dest_color = blend_colors_premultiplied_alpha(src_color, *dest_color);
-#endif
         }
     }
 }

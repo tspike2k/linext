@@ -500,6 +500,7 @@ int main(){
         Blit_Dest canvas[Framebuffers_Count];
         for_count(u32, i, Framebuffers_Count){
             canvas[i] = blit_dest_from_drm_fb(&drm.framebuffers[i]);
+            canvas[i].tint = 0xffffffff;
         }
 
         f32 screen_w = canvas[0].width;

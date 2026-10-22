@@ -221,6 +221,16 @@ Cbed_API Vec4 v4_lerp(Vec4 a, Vec4 b, float t){
     return result;
 }
 
+Cbed_API Vec4  v4_mul(Vec4 a, Vec4 b){
+    Vec4 result = v4(
+        a.x * b.x,
+        a.y * b.y,
+        a.z * b.z,
+        a.w * b.w
+    );
+    return result;
+}
+
 Cbed_API Rect rect_from_min_wh(Vec2 min_p, float w, float h){
     Vec2 extents = {w*0.5f, h*0.5f};
     Vec2 center  = {min_p.x + extents.x, min_p.y + extents.y};
