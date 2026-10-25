@@ -8,7 +8,7 @@ This project is an attempt at creating an alternative to the GNU/Linux userland.
 
 The goal above is perhaps too ambitious for a single developer to tackle as a side project. However, it should prove to be an interesting challenge and an exciting way to learn more about how Linux works at a lower level.
 
-Currently everything presented here is only a proof-of-concept. Bypassing the GNU/Linux userland was trickier than expected. By sharing this project, the author hopes it will be useful for developers with similar aspirations.
+Currently everything presented here is only a proof-of-concept. In fact, all that currently exists is a fairly playable spin on the classic Snake game. Bypassing the GNU/Linux userland was trickier than expected. By sharing this project, the author hopes it will be useful for developers with similar aspirations.
 
 ## Setup
 
@@ -36,4 +36,4 @@ This project's source code is shared under the zlib license. See accompanying [l
 
 ## Special Thanks
 
-Thanks to Linus Torvalds and all the Linux kernel developers for making industry strength software that even hobbyists can horse around with in their spare time.
+Thanks to Linus Torvalds and all the Linux kernel developers for making industry strength software that even hobbyists can horse around with in their spare time. Also thanks to Ryan Fleury's videos on Nintendo 64 programming, which inspired the author to try working on something lower-level.

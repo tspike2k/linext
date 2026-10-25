@@ -47,6 +47,12 @@ https://github.com/rockytriton/LLD/tree/main/linux_os
 #include "cbed/random.c"
 #include "super_snake.c"
 
+#ifdef VM_Target
+#  define Mouse_Sensitivity 1.0f
+#else
+#  define Mouse_Sensitivity 2.0f
+#endif
+
 typedef struct{
     u32 *data;
     u32  width;
@@ -505,8 +511,7 @@ int main(){
 
         f32 screen_w = canvas[0].width;
         f32 screen_h = canvas[0].height;
-        int mouse_x = 0.5f*screen_w;
-        int mouse_y = 0.5f*screen_h;
+        Vec2 mouse = v2(screen_w*0.5f, screen_h*0.5f);
 
         Buffer memory = {g_main_memory, Array_Len(g_main_memory)};
         Buffer temp = {g_temp_memory, Array_Len(g_temp_memory)};
@@ -541,19 +546,19 @@ int main(){
                         mouse_left_clicked = true;
                     }
 
-                    mouse_x += evt->data[1];
-                    mouse_y -= evt->data[2];
+                    mouse.x += evt->data[1]*Mouse_Sensitivity;
+                    mouse.y -= evt->data[2]*Mouse_Sensitivity;
                 }
 
-                mouse_x = CLAMP(mouse_x, 0, screen_w);
-                mouse_y = CLAMP(mouse_y, 0, screen_h);
+                mouse.x = CLAMP(mouse.x, 0, screen_w);
+                mouse.y = CLAMP(mouse.y, 0, screen_h);
             }
 
             // Sanity check. We need to be sure we don't send a second page flip request
             // before the first request is filled.
             if(!requested_pageflip){
                 Blit_Dest *backbuffer = &canvas[backbuffer_index];
-                game_sim_and_draw(&game, backbuffer, v2(mouse_x, mouse_y), mouse_left_clicked, dt);
+                game_sim_and_draw(&game, backbuffer, mouse, mouse_left_clicked, dt);
 
                 // We can't configure the color format of the framebuffers when
                 // we're using Qemu, so the byte order of the colors needs to be

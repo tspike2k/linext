@@ -30,7 +30,7 @@ typedef struct{
 typedef struct{
     u32        parts_count;
     Snake_Part parts[128];
-    Vec2       vel;
+    Vec2       facing;
 } Snake;
 
 typedef struct{
@@ -150,7 +150,10 @@ static bool game_init(Game *s, f32 screen_w, f32 screen_h, Buffer *memory, Buffe
 
     s->game_mode = Game_Mode_Menu;
     s->menu_focus = v2(0.5f, 0.5f);
+
+#ifdef VM_Target
     s->debug_mode = true;
+#endif
 
     // TODO: Use time as the seed?
     s->rng = xs32_seed(748479887);
@@ -295,17 +298,32 @@ static void game_sim_and_draw(Game *s, Blit_Dest *dest, Vec2 mouse, bool mouse_l
             //
             // Simulate the snake.
             //
-            f32 snake_speed_min = 0.75f*(f32)s->screen_w;
-            f32 snake_speed_max = 3.5f*snake_speed_min;
+            f32 snake_speed_min = 0.25f*(f32)s->screen_w;
+            f32 snake_speed_max = 2.5f*snake_speed_min;
             f32 snake_speed_t = ((f32)snake->parts_count) / (f32)Array_Len(s->snake.parts);
             f32 snake_speed = lerp(snake_speed_min, snake_speed_max, snake_speed_t);
 
             Snake_Part *head = &snake->parts[0];
-            Vec2 snake_dir = v2_normalize(v2_sub(mouse, head->p));
-            Vec2 snake_accel = v2_muls(snake_dir, snake_speed*dt);
-            snake->vel = v2_add(snake->vel, snake_accel);
-            snake->vel = v2_sub(snake->vel, v2_muls(snake->vel, 0.05f)); // Estimate friction
-            head->p = v2_add(head->p, v2_muls(snake->vel, dt));
+            if(v2_dist_sq(head->p, mouse) > squared(head->radius)){
+                Vec2 snake_target_dir = v2_normalize(v2_sub(mouse, head->p));
+                snake->facing = snake_target_dir;
+            }
+
+            Vec2 snake_delta = v2_muls(snake->facing, snake_speed*dt);
+            Vec2 head_target_p = v2_add(head->p, snake_delta);
+
+            // Prevent the head from being able to back up into the very next part (the "neck")
+            if(snake->parts_count > 1){
+                Snake_Part *neck = &snake->parts[1];
+                f32 min_dist = head->radius + neck->radius;
+                if(v2_dist_sq(head_target_p, neck->p) < squared(min_dist)){
+                    Vec2 dir = v2_normalize(v2_sub(head_target_p, neck->p));
+                    head_target_p = v2_add(neck->p, v2_muls(dir, min_dist+snake_speed*dt));
+                }
+            }
+
+            head->p = head_target_p;
+
 
             if(circles_overlap(head->p, head->radius, s->food_pos, s->food_radius)){
                 s->score++;

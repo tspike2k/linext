@@ -13,6 +13,8 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define CLAMP(a, min, max) ((a) < (min) ? (min) : ((a) > (max) ? (max) : (a)))
 
+#define signf(a)  ( (a) < 0.0f ? -1.0f : 1.0f )
+
 #ifdef OS_Linux
 
 #define pow   __builtin_powif
