@@ -152,7 +152,7 @@ static bool game_init(Game *s, f32 screen_w, f32 screen_h, Buffer *memory, Buffe
     s->menu_focus = v2(0.5f, 0.5f);
 
 #ifdef VM_Target
-    s->debug_mode = true;
+    /*s->debug_mode = true;*/
 #endif
 
     // TODO: Use time as the seed?

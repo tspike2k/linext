@@ -30,6 +30,12 @@ __WARNING!__ This project is a work-in-progress; though unlikely, running it on 
 
 To test inside a virtual machine, run the `test.sh` script. To test on real hardware, burn the *./bin/linext.iso* live image to a disc or USB stick, insert it into a computer, power the computer on and then select the media as the boot device.
 
+## Screenshot
+
+Super Snake:
+
+![Super Snake screenshot](https://github.com/tspike2k/linext/blob/main/data/screenshot.png)
+
 ## License
 
 This project's source code is shared under the zlib license. See accompanying [license file](https://github.com/tspike2k/linext/blob/main/LICENSE.txt). Project dependencies are under their own individual licenses.
